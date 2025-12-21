@@ -194,7 +194,9 @@ def start_health_server():
 # ЛОГИКА БОТА
 # -------------------------------------------------
 FORTUNE_COLLECTION_DIR = Path(os.environ.get("FORTUNE_COLLECTION_DIR", "images"))
-MENU_IMAGE_PATH = Path(os.environ.get("FORTUNE_MENU_IMAGE", "assets/menu.jpg"))
+FORTUNE_MENU_IMAGE_PATH = Path(os.environ.get("FORTUNE_MENU_IMAGE", "assets/menu.jpg"))
+MAIN_MENU_IMAGE_PATH = Path(os.environ.get("MAIN_MENU_IMAGE", "assets/main.png"))
+FORTUNE_BALL_DIR = Path(os.environ.get("FORTUNE_BALL_DIR", "fortune ball"))
 FORTUNES_PER_SESSION = 8
 
 # In-memory storage that keeps track of which fortune image corresponds to which button
@@ -224,6 +226,29 @@ def load_fortune_images() -> List[Path]:
     return images
 
 
+def load_ball_images() -> List[Path]:
+    if not FORTUNE_BALL_DIR.exists():
+        raise RuntimeError(
+            f"Fortune ball image directory '{FORTUNE_BALL_DIR}' does not exist. "
+            "Place your ball images there or set FORTUNE_BALL_DIR."
+        )
+
+    supported_suffixes = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    images = [
+        path
+        for path in FORTUNE_BALL_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() in supported_suffixes
+    ]
+
+    if not images:
+        raise RuntimeError(
+            "No images found in the fortune ball directory. "
+            "Add at least one image to show answers."
+        )
+
+    return images
+
+
 def build_menu_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         InlineKeyboardButton(str(i), callback_data=f"fortune_{i}")
@@ -233,11 +258,32 @@ def build_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard_layout)
 
 
+def build_main_menu_keyboard() -> InlineKeyboardMarkup:
+    keyboard_layout = [
+        [
+            InlineKeyboardButton(
+                "🥠 Печенье с предсказаниями", callback_data="menu_fortune"
+            )
+        ],
+        [InlineKeyboardButton("🔮 Шар предсказаний", callback_data="menu_ball")],
+    ]
+    return InlineKeyboardMarkup(keyboard_layout)
+
+
+def build_ball_menu_keyboard() -> InlineKeyboardMarkup:
+    keyboard_layout = [
+        [InlineKeyboardButton("Получить ответ", callback_data="ball_answer")]
+    ]
+    return InlineKeyboardMarkup(keyboard_layout)
+
+
 def select_random_fortunes(images: List[Path]) -> List[Path]:
     return random.sample(images, FORTUNES_PER_SESSION)
 
 
-async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def send_fortune_menu(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     images = load_fortune_images()
     selected_fortunes = select_random_fortunes(images)
     user_id = update.effective_user.id
@@ -246,9 +292,9 @@ async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     caption = "Выбери своё печенье с предсказанием!"
     message = update.effective_message
 
-    if MENU_IMAGE_PATH.exists():
+    if FORTUNE_MENU_IMAGE_PATH.exists():
         await message.reply_photo(
-            photo=MENU_IMAGE_PATH.read_bytes(),
+            photo=FORTUNE_MENU_IMAGE_PATH.read_bytes(),
             caption=caption,
             reply_markup=build_menu_keyboard(),
         )
@@ -259,12 +305,49 @@ async def send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
+async def send_main_menu(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    caption = "Добро пожаловать к волшебному духу магических предсказаний ✨🔮"
+    message = update.effective_message
+
+    if MAIN_MENU_IMAGE_PATH.exists():
+        await message.reply_photo(
+            photo=MAIN_MENU_IMAGE_PATH.read_bytes(),
+            caption=caption,
+            reply_markup=build_main_menu_keyboard(),
+        )
+    else:
+        await message.reply_text(
+            text=caption,
+            reply_markup=build_main_menu_keyboard(),
+        )
+
+
+async def send_ball_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    caption = "Загадай про себя свой вопрос, и шар даст волшебный ответ ✨🔮"
+    message = update.effective_message
+    ball_image_path = Path("assets/ball.png")
+
+    if ball_image_path.exists():
+        await message.reply_photo(
+            photo=ball_image_path.read_bytes(),
+            caption=caption,
+            reply_markup=build_ball_menu_keyboard(),
+        )
+    else:
+        await message.reply_text(
+            text=caption,
+            reply_markup=build_ball_menu_keyboard(),
+        )
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await send_menu(update, context)
+    await send_main_menu(update, context)
 
 
 async def refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await send_menu(update, context)
+    await send_fortune_menu(update, context)
 
 
 async def handle_fortune_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -296,6 +379,32 @@ async def handle_fortune_selection(update: Update, context: ContextTypes.DEFAULT
         await query.message.reply_photo(photo=fortune_file)
 
 
+async def handle_menu_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "menu_fortune":
+        await send_fortune_menu(update, context)
+    elif query.data == "menu_ball":
+        await send_ball_menu(update, context)
+
+
+async def handle_ball_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        images = load_ball_images()
+    except RuntimeError as exc:
+        LOGGER.error("Fortune ball images error: %s", exc)
+        await query.answer("Шар пока молчит. Попробуй позже.", show_alert=True)
+        return
+
+    ball_image = random.choice(images)
+    with ball_image.open("rb") as ball_file:
+        await query.message.reply_photo(photo=ball_file)
+
+
 def main():
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -305,7 +414,13 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("refresh", refresh))
-    application.add_handler(CallbackQueryHandler(handle_fortune_selection))
+    application.add_handler(CallbackQueryHandler(handle_menu_action, pattern="^menu_"))
+    application.add_handler(
+        CallbackQueryHandler(handle_ball_answer, pattern="^ball_answer$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handle_fortune_selection, pattern="^fortune_")
+    )
 
     LOGGER.info("Bot started. Waiting for updates...")
     application.run_polling()
