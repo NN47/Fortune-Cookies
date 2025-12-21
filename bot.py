@@ -277,6 +277,22 @@ def build_ball_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard_layout)
 
 
+def build_fortune_result_keyboard() -> InlineKeyboardMarkup:
+    keyboard_layout = [
+        [InlineKeyboardButton("Узнать еще", callback_data="menu_fortune")],
+        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
+    ]
+    return InlineKeyboardMarkup(keyboard_layout)
+
+
+def build_ball_result_keyboard() -> InlineKeyboardMarkup:
+    keyboard_layout = [
+        [InlineKeyboardButton("Спросить еще", callback_data="ball_answer")],
+        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
+    ]
+    return InlineKeyboardMarkup(keyboard_layout)
+
+
 def select_random_fortunes(images: List[Path]) -> List[Path]:
     return random.sample(images, FORTUNES_PER_SESSION)
 
@@ -376,7 +392,10 @@ async def handle_fortune_selection(update: Update, context: ContextTypes.DEFAULT
 
     fortune_path = fortunes[index]
     with fortune_path.open("rb") as fortune_file:
-        await query.message.reply_photo(photo=fortune_file)
+        await query.message.reply_photo(
+            photo=fortune_file,
+            reply_markup=build_fortune_result_keyboard(),
+        )
 
 
 async def handle_menu_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -387,6 +406,8 @@ async def handle_menu_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_fortune_menu(update, context)
     elif query.data == "menu_ball":
         await send_ball_menu(update, context)
+    elif query.data == "menu_main":
+        await send_main_menu(update, context)
 
 
 async def handle_ball_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -402,7 +423,10 @@ async def handle_ball_answer(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     ball_image = random.choice(images)
     with ball_image.open("rb") as ball_file:
-        await query.message.reply_photo(photo=ball_file)
+        await query.message.reply_photo(
+            photo=ball_file,
+            reply_markup=build_ball_result_keyboard(),
+        )
 
 
 def main():
