@@ -417,6 +417,9 @@ def build_menu_keyboard() -> InlineKeyboardMarkup:
         for i in range(1, FORTUNES_PER_SESSION + 1)
     ]
     keyboard_layout = [buttons[i : i + 4] for i in range(0, len(buttons), 4)]
+    keyboard_layout.append(
+        [InlineKeyboardButton("Главное меню", callback_data="menu_main")]
+    )
     return InlineKeyboardMarkup(keyboard_layout)
 
 
@@ -427,7 +430,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
                 "🥠 Печенье с предсказаниями", callback_data="menu_fortune"
             )
         ],
-        [InlineKeyboardButton("🔮 Шар предсказаний", callback_data="menu_ball")],
+        [InlineKeyboardButton("🎱 Шар предсказаний", callback_data="menu_ball")],
         [InlineKeyboardButton("🃏 Таро", callback_data="menu_tarot")],
     ]
     return InlineKeyboardMarkup(keyboard_layout)
@@ -435,7 +438,8 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
 
 def build_ball_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [
-        [InlineKeyboardButton("Получить ответ", callback_data="ball_answer")]
+        [InlineKeyboardButton("Получить ответ", callback_data="ball_answer")],
+        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
     ]
     return InlineKeyboardMarkup(keyboard_layout)
 
