@@ -446,7 +446,8 @@ def build_ball_menu_keyboard() -> InlineKeyboardMarkup:
 
 def build_tarot_intro_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [
-        [InlineKeyboardButton("Выбрать свою карту", callback_data="tarot_pick")],
+        [InlineKeyboardButton("Получить предсказание на год", callback_data="tarot_pick")],
+        [InlineKeyboardButton("Расклад на вторую половину", callback_data="tarot_second_half")],
         [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
     ]
     return InlineKeyboardMarkup(keyboard_layout)
@@ -587,6 +588,23 @@ async def send_tarot_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
 
+async def send_tarot_second_half(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    caption = "Выбери карту и узнай расклад на вторую половину года."
+    message = update.effective_message
+
+    if TAROT_SPLASH_IMAGE_PATH.exists():
+        await message.reply_photo(
+            photo=TAROT_SPLASH_IMAGE_PATH.read_bytes(),
+            caption=caption,
+            reply_markup=build_tarot_pick_keyboard(),
+        )
+    else:
+        await message.reply_text(
+            text=caption,
+            reply_markup=build_tarot_pick_keyboard(),
+        )
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await send_main_menu(update, context)
 
@@ -655,6 +673,10 @@ async def handle_tarot_action(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if query.data == "tarot_intro":
         await send_tarot_intro(update, context)
+        return
+
+    if query.data == "tarot_second_half":
+        await send_tarot_second_half(update, context)
         return
 
     if not query.data.startswith("tarot_draw_"):
