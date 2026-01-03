@@ -198,6 +198,13 @@ FORTUNE_MENU_IMAGE_PATH = Path(os.environ.get("FORTUNE_MENU_IMAGE", "assets/menu
 MAIN_MENU_IMAGE_PATH = Path(os.environ.get("MAIN_MENU_IMAGE", "assets/main.png"))
 FORTUNE_BALL_DIR = Path(os.environ.get("FORTUNE_BALL_DIR", "fortune ball"))
 FORTUNES_PER_SESSION = 8
+TAROT_DIR = Path(os.environ.get("TAROT_DIR", "tarot"))
+TAROT_TITLE_IMAGE_PATH = Path(
+    os.environ.get("TAROT_TITLE_IMAGE", "assets/Title Card.png")
+)
+TAROT_SPLASH_IMAGE_PATH = Path(
+    os.environ.get("TAROT_SPLASH_IMAGE", "assets/Splash Screen.png")
+)
 
 # In-memory storage that keeps track of which fortune image corresponds to which button
 user_sessions: Dict[int, List[Path]] = {}
@@ -244,9 +251,63 @@ def load_ball_images() -> List[Path]:
         raise RuntimeError(
             "No images found in the fortune ball directory. "
             "Add at least one image to show answers."
+    )
+
+    return images
+
+
+def load_tarot_cards() -> List[Path]:
+    if not TAROT_DIR.exists():
+        raise RuntimeError(
+            f"Tarot card directory '{TAROT_DIR}' does not exist. "
+            "Place tarot cards there or set TAROT_DIR."
+        )
+
+    supported_suffixes = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    images = [
+        path for path in TAROT_DIR.iterdir() if path.suffix.lower() in supported_suffixes
+    ]
+
+    if not images:
+        raise RuntimeError(
+            "No tarot cards found. Add images to the tarot directory to continue."
         )
 
     return images
+
+
+TAROT_PREDICTIONS: Dict[str, str] = {
+    "0. The Fool": "Новые начала и смелые шаги приведут к неожиданным открытиям.",
+    "I. The Magician": "Используй свои таланты — сегодня ты способен на многое.",
+    "II. The High Priestess": "Доверься интуиции, ответы скрыты глубже, чем кажется.",
+    "III. The Empress": "Твоя забота даст плод — прояви теплоту и получишь поддержку.",
+    "IV. The Emperor": "Чёткий план и дисциплина помогут навести порядок.",
+    "V. The Hierophant": "Следуй проверенным традициям — мудрость рядом.",
+    "VI. The Lovers": "Важное решение о союзе — слушай сердце и будь честен.",
+    "VII. The Chariot": "Время действовать решительно — уверенность принесёт успех.",
+    "VIII. Strength": "Спокойная сила и терпение помогут преодолеть преграды.",
+    "IX. The Hermit": "Небольшое уединение даст ясность и новые инсайты.",
+    "X. Wheel of Fortune": "Колесо судьбы вращается — будь готов к приятным переменам.",
+    "XI. Justice": "Справедливость восторжествует — действуй честно и прозрачно.",
+    "XII. The Hanged Man": "Посмотри на ситуацию под другим углом, и решение найдётся.",
+    "XIII. Death": "Закрой старую главу, чтобы освободить место новому.",
+    "XIV. Temperance": "Сохраняй баланс — гармония придёт через умеренность.",
+    "XV. The Devil": "Не поддавайся соблазнам — помни о своих истинных целях.",
+    "XVI. The Tower": "Неожиданные перемены разрушат лишнее, открывая путь обновлению.",
+    "XVII. The Star": "Надежда и вдохновение ведут тебя — верь своим мечтам.",
+    "XVIII. The Moon": "Не всё ясно — прислушайся к чувствам и избегай иллюзий.",
+    "XIX. The Sun": "Радость и успех рядом — делись теплом и получишь больше.",
+    "XX. Judgement": "Настало время сделать выбор и двинуться вперёд без сомнений.",
+    "XXI. The World": "Завершение цикла — празднуй достижение и готовься к новому пути.",
+}
+
+
+def get_tarot_prediction(card_name: str) -> str:
+    base_name = Path(card_name).stem
+    return TAROT_PREDICTIONS.get(
+        base_name,
+        "Карта шепчет о переменах. Прислушайся к знакам и действуй уверенно.",
+    )
 
 
 def build_menu_keyboard() -> InlineKeyboardMarkup:
@@ -266,6 +327,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
             )
         ],
         [InlineKeyboardButton("🔮 Шар предсказаний", callback_data="menu_ball")],
+        [InlineKeyboardButton("🃏 Таро", callback_data="menu_tarot")],
     ]
     return InlineKeyboardMarkup(keyboard_layout)
 
@@ -273,6 +335,34 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
 def build_ball_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [
         [InlineKeyboardButton("Получить ответ", callback_data="ball_answer")]
+    ]
+    return InlineKeyboardMarkup(keyboard_layout)
+
+
+def build_tarot_intro_keyboard() -> InlineKeyboardMarkup:
+    keyboard_layout = [
+        [InlineKeyboardButton("Выбрать свою карту", callback_data="tarot_pick")],
+        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
+    ]
+    return InlineKeyboardMarkup(keyboard_layout)
+
+
+def build_tarot_pick_keyboard() -> InlineKeyboardMarkup:
+    buttons = [
+        InlineKeyboardButton(str(i), callback_data=f"tarot_draw_{i}")
+        for i in range(1, 7)
+    ]
+    keyboard_layout = [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
+    keyboard_layout.append(
+        [InlineKeyboardButton("Главное меню", callback_data="menu_main")]
+    )
+    return InlineKeyboardMarkup(keyboard_layout)
+
+
+def build_tarot_result_keyboard() -> InlineKeyboardMarkup:
+    keyboard_layout = [
+        [InlineKeyboardButton("Выбрать другую", callback_data="tarot_pick")],
+        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
     ]
     return InlineKeyboardMarkup(keyboard_layout)
 
@@ -358,6 +448,40 @@ async def send_ball_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
 
+async def send_tarot_intro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    caption = "Открой двери в мир таро и получи своё предсказание ✨"
+    message = update.effective_message
+
+    if TAROT_TITLE_IMAGE_PATH.exists():
+        await message.reply_photo(
+            photo=TAROT_TITLE_IMAGE_PATH.read_bytes(),
+            caption=caption,
+            reply_markup=build_tarot_intro_keyboard(),
+        )
+    else:
+        await message.reply_text(
+            text=caption,
+            reply_markup=build_tarot_intro_keyboard(),
+        )
+
+
+async def send_tarot_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    caption = "Выбери карту и получи свое предсказание."
+    message = update.effective_message
+
+    if TAROT_SPLASH_IMAGE_PATH.exists():
+        await message.reply_photo(
+            photo=TAROT_SPLASH_IMAGE_PATH.read_bytes(),
+            caption=caption,
+            reply_markup=build_tarot_pick_keyboard(),
+        )
+    else:
+        await message.reply_text(
+            text=caption,
+            reply_markup=build_tarot_pick_keyboard(),
+        )
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await send_main_menu(update, context)
 
@@ -406,8 +530,40 @@ async def handle_menu_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_fortune_menu(update, context)
     elif query.data == "menu_ball":
         await send_ball_menu(update, context)
+    elif query.data == "menu_tarot":
+        await send_tarot_intro(update, context)
     elif query.data == "menu_main":
         await send_main_menu(update, context)
+
+
+async def handle_tarot_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "tarot_pick":
+        await send_tarot_pick(update, context)
+        return
+
+    if not query.data.startswith("tarot_draw_"):
+        await query.answer("Неизвестная команда таро.", show_alert=True)
+        return
+
+    try:
+        cards = load_tarot_cards()
+    except RuntimeError as exc:
+        LOGGER.error("Tarot cards error: %s", exc)
+        await query.answer("Карты недоступны. Попробуй позже.", show_alert=True)
+        return
+
+    card_path = random.choice(cards)
+    caption = f"{card_path.stem}\n\n{get_tarot_prediction(card_path.name)}"
+
+    with card_path.open("rb") as card_file:
+        await query.message.reply_photo(
+            photo=card_file,
+            caption=caption,
+            reply_markup=build_tarot_result_keyboard(),
+        )
 
 
 async def handle_ball_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -442,6 +598,7 @@ def main():
     application.add_handler(
         CallbackQueryHandler(handle_ball_answer, pattern="^ball_answer$")
     )
+    application.add_handler(CallbackQueryHandler(handle_tarot_action, pattern="^tarot_"))
     application.add_handler(
         CallbackQueryHandler(handle_fortune_selection, pattern="^fortune_")
     )
