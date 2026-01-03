@@ -458,14 +458,14 @@ def build_tarot_pick_keyboard() -> InlineKeyboardMarkup:
         for i in range(1, 7)
     ]
     keyboard_layout = [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
-    keyboard_layout.append(
-        [InlineKeyboardButton("Главное меню", callback_data="menu_main")]
-    )
+    keyboard_layout.append([InlineKeyboardButton("Назад", callback_data="tarot_intro")])
+    keyboard_layout.append([InlineKeyboardButton("Главное меню", callback_data="menu_main")])
     return InlineKeyboardMarkup(keyboard_layout)
 
 
 def build_tarot_result_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [
+        [InlineKeyboardButton("Назад", callback_data="tarot_back")],
         [InlineKeyboardButton("Выбрать другую", callback_data="tarot_pick")],
         [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
     ]
@@ -647,6 +647,14 @@ async def handle_tarot_action(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if query.data == "tarot_pick":
         await send_tarot_pick(update, context)
+        return
+
+    if query.data == "tarot_back":
+        await send_tarot_pick(update, context)
+        return
+
+    if query.data == "tarot_intro":
+        await send_tarot_intro(update, context)
         return
 
     if not query.data.startswith("tarot_draw_"):
