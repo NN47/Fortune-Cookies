@@ -427,6 +427,23 @@ def get_tarot_prediction(card_name: str) -> str:
     )
 
 
+def get_tarot_short_prediction(card_name: str) -> str:
+    """
+    Возвращает короткое описание карты (первая фраза полного значения).
+
+    Так ответ остаётся текстовым и не превращается в длинное полотно из
+    подробных трактовок на каждую из 20 карт во втором раскладе.
+    """
+
+    full_prediction = get_tarot_prediction(card_name)
+    first_sentence = full_prediction.split(". ")[0].strip()
+
+    if not first_sentence.endswith("."):
+        first_sentence += "."
+
+    return first_sentence
+
+
 def build_menu_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         InlineKeyboardButton(str(i), callback_data=f"fortune_{i}")
@@ -649,10 +666,20 @@ def compose_second_half_spread(cards: List[Path]) -> str:
     for idx, question in enumerate(SECOND_HALF_QUESTIONS):
         card_pair = selected_cards[idx * 2 : idx * 2 + 2]
         card_names = " + ".join(card.stem for card in card_pair)
-        lines.append(f"{idx + 1}. {question}\n🃏 Карты: {card_names}")
+        short_predictions = " / ".join(
+            get_tarot_short_prediction(card.name) for card in card_pair
+        )
+        lines.append(
+            f"{idx + 1}. {question}\n"
+            f"🃏 Карты: {card_names}\n"
+            f"💬 Значение: {short_predictions}"
+        )
 
     spread_text = "Расклад на вторую половину года:\n\n" + "\n\n".join(lines)
-    spread_text += "\n\n✨ Ответы рождаются из сочетания выбранных арканов."
+    spread_text += (
+        "\n\n✨ Ответы рождаются из сочетания выбранных арканов."
+        " Смотри на пары в контексте вопроса."
+    )
     return spread_text
 
 
