@@ -205,6 +205,9 @@ TAROT_TITLE_IMAGE_PATH = Path(
 TAROT_SPLASH_IMAGE_PATH = Path(
     os.environ.get("TAROT_SPLASH_IMAGE", "assets/Splash Screen.png")
 )
+TAROT_CARD_BACK_IMAGE_PATH = Path(
+    os.environ.get("TAROT_CARD_BACK_IMAGE", "assets/Card Back.png")
+)
 
 # In-memory storage that keeps track of which fortune image corresponds to which button
 user_sessions: Dict[int, List[Path]] = {}
@@ -402,6 +405,19 @@ TAROT_PREDICTIONS: Dict[str, str] = {
     ),
 }
 
+SECOND_HALF_QUESTIONS: List[str] = [
+    "Какой он этот человек по отношению к тебе?",
+    "Какие мысли у этого человека по отношению к тебе?",
+    "Скучает ли этот человек по тебе?",
+    "Что на душе у этого человека по отношению к тебе?",
+    "Что хотел бы сказать?",
+    "Какие чувства?",
+    "Хотел бы встречи?",
+    "О чем жалеет этот человек по отношению к тебе?",
+    "Каким видит тебя?",
+    "Какие видит перспективы этот человек по отношению к тебе?",
+]
+
 
 def get_tarot_prediction(card_name: str) -> str:
     base_name = Path(card_name).stem
@@ -461,6 +477,24 @@ def build_tarot_pick_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
     keyboard_layout.append([InlineKeyboardButton("Назад", callback_data="tarot_intro")])
     keyboard_layout.append([InlineKeyboardButton("Главное меню", callback_data="menu_main")])
+    return InlineKeyboardMarkup(keyboard_layout)
+
+
+def build_tarot_second_half_keyboard() -> InlineKeyboardMarkup:
+    keyboard_layout = [
+        [InlineKeyboardButton("Сделать расклад", callback_data="tarot_second_half_run")],
+        [InlineKeyboardButton("Назад", callback_data="tarot_intro")],
+        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
+    ]
+    return InlineKeyboardMarkup(keyboard_layout)
+
+
+def build_tarot_second_half_result_keyboard() -> InlineKeyboardMarkup:
+    keyboard_layout = [
+        [InlineKeyboardButton("Сделать расклад", callback_data="tarot_second_half_run")],
+        [InlineKeyboardButton("Назад", callback_data="tarot_intro")],
+        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
+    ]
     return InlineKeyboardMarkup(keyboard_layout)
 
 
@@ -589,20 +623,64 @@ async def send_tarot_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def send_tarot_second_half(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    caption = "Выбери карту и узнай расклад на вторую половину года."
+    caption = (
+        "Загадай имя человека, на которого будет расклад, и нажми кнопку ниже ✨"
+    )
     message = update.effective_message
 
-    if TAROT_SPLASH_IMAGE_PATH.exists():
+    if TAROT_CARD_BACK_IMAGE_PATH.exists():
         await message.reply_photo(
-            photo=TAROT_SPLASH_IMAGE_PATH.read_bytes(),
+            photo=TAROT_CARD_BACK_IMAGE_PATH.read_bytes(),
             caption=caption,
-            reply_markup=build_tarot_pick_keyboard(),
+            reply_markup=build_tarot_second_half_keyboard(),
         )
     else:
         await message.reply_text(
             text=caption,
-            reply_markup=build_tarot_pick_keyboard(),
+            reply_markup=build_tarot_second_half_keyboard(),
         )
+
+
+def compose_second_half_spread(cards: List[Path]) -> str:
+    required_cards = len(SECOND_HALF_QUESTIONS) * 2
+    selected_cards = random.sample(cards, required_cards)
+
+    lines = []
+    for idx, question in enumerate(SECOND_HALF_QUESTIONS):
+        card_pair = selected_cards[idx * 2 : idx * 2 + 2]
+        card_names = " + ".join(card.stem for card in card_pair)
+        lines.append(f"{idx + 1}. {question}\n🃏 Карты: {card_names}")
+
+    spread_text = "Расклад на вторую половину года:\n\n" + "\n\n".join(lines)
+    spread_text += "\n\n✨ Ответы рождаются из сочетания выбранных арканов."
+    return spread_text
+
+
+async def send_tarot_second_half_result(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+
+    try:
+        cards = load_tarot_cards()
+    except RuntimeError as exc:
+        LOGGER.error("Tarot cards error: %s", exc)
+        await query.answer("Карты недоступны. Попробуй позже.", show_alert=True)
+        return
+
+    required_cards = len(SECOND_HALF_QUESTIONS) * 2
+    if len(cards) < required_cards:
+        await query.answer(
+            "Для расклада нужно минимум 20 карт. Попробуй позже.",
+            show_alert=True,
+        )
+        return
+
+    spread_text = compose_second_half_spread(cards)
+    await query.message.reply_text(
+        text=spread_text,
+        reply_markup=build_tarot_second_half_result_keyboard(),
+    )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -677,6 +755,10 @@ async def handle_tarot_action(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if query.data == "tarot_second_half":
         await send_tarot_second_half(update, context)
+        return
+
+    if query.data == "tarot_second_half_run":
+        await send_tarot_second_half_result(update, context)
         return
 
     if not query.data.startswith("tarot_draw_"):
