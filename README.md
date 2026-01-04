@@ -12,6 +12,9 @@ pip install -r requirements.txt
 
 export TELEGRAM_BOT_TOKEN="твой токен"
 export GROK_API_KEY="ключ от Grok"
+# Вебхук-режим (опционально):
+export TELEGRAM_WEBHOOK_URL="https://your-domain.com/telegram"
+export TELEGRAM_WEBHOOK_PATH="telegram"
 
 3. Запустите:
 
@@ -36,7 +39,16 @@ python bot.py
 
 ## 🌐 Деплой на Render
 
-Сделайте репозиторий публичным и подключите к Render.  
+Сделайте репозиторий публичным и подключите к Render.
 Команда запуска:
 
 python bot.py
+
+### Polling против Webhook
+
+- **По умолчанию** бот работает через polling и поднимает встроенный healthcheck
+  сервер на порту `HEALTHCHECK_PORT` (по умолчанию совпадает с `PORT`).
+- Чтобы избежать конфликтов `getUpdates` при нескольких инстансах, можно перейти
+  в режим webhook: задайте `TELEGRAM_WEBHOOK_URL` и (опционально)
+  `TELEGRAM_WEBHOOK_PATH`. В этом случае бот слушает HTTP-порт сам и отдельный
+  healthcheck сервер не запускается.
