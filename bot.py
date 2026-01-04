@@ -4,6 +4,7 @@ import random
 from pathlib import Path
 from typing import Dict, List
 import json
+import aiohttp
 
 from dotenv import load_dotenv
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -16,6 +17,8 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 load_dotenv()
@@ -210,6 +213,9 @@ TAROT_SPLASH_IMAGE_PATH = Path(
 TAROT_CARD_BACK_IMAGE_PATH = Path(
     os.environ.get("TAROT_CARD_BACK_IMAGE", "assets/Card Back.png")
 )
+GROK_MODEL = os.environ.get("GROK_MODEL", "grok-beta")
+GROK_API_URL = os.environ.get("GROK_API_URL", "https://api.x.ai/v1/chat/completions")
+GROK_TIMEOUT_SECONDS = int(os.environ.get("GROK_TIMEOUT_SECONDS", "30"))
 
 # In-memory storage that keeps track of which fortune image corresponds to which button
 user_sessions: Dict[int, List[Path]] = {}
@@ -421,6 +427,18 @@ SECOND_HALF_QUESTIONS: List[str] = [
 ]
 
 
+def get_user_second_half_questions(user_data: Dict) -> List[str]:
+    saved = [q.strip() for q in user_data.get("second_half_questions", []) if q.strip()]
+    if saved:
+        return saved
+
+    return SECOND_HALF_QUESTIONS
+
+
+def stop_collecting_second_half(user_data: Dict) -> None:
+    user_data.pop("collecting_second_half", None)
+
+
 def get_tarot_prediction(card_name: str) -> str:
     base_name = Path(card_name).stem
     return TAROT_PREDICTIONS.get(
@@ -444,6 +462,59 @@ def get_tarot_short_prediction(card_name: str) -> str:
         first_sentence += "."
 
     return first_sentence
+
+
+async def ask_grok_about_second_half(questions: List[str]) -> str:
+    api_key = os.environ.get("GROK_API_KEY")
+    if not api_key:
+        return (
+            "GROK_API_KEY не настроен. Добавь ключ окружения, чтобы получать ответы"
+            " от Grok."
+        )
+
+    formatted_questions = "\n".join(
+        f"{idx + 1}. {question}" for idx, question in enumerate(questions)
+    )
+    prompt = (
+        "Ответь на вопросы пользователя лаконично."
+        " Каждый пункт начинай с номера, повторяй вопрос и давай ответ в 1-2"
+        " предложения без лишних преамбул.\n\n"
+        f"Вопросы:\n{formatted_questions}"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": GROK_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=GROK_TIMEOUT_SECONDS)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                GROK_API_URL, headers=headers, json=payload
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    LOGGER.error(
+                        "Grok API returned %s: %s", response.status, error_text
+                    )
+                    return "Не удалось получить ответ от Grok. Попробуй позже."
+
+                data = await response.json()
+                choices = data.get("choices", [])
+                if not choices:
+                    LOGGER.error("Grok API returned no choices: %s", data)
+                    return "Grok вернул пустой ответ. Попробуй еще раз."
+
+                content = choices[0]["message"].get("content", "").strip()
+                return content or "Grok не смог сформулировать ответ."
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.exception("Failed to contact Grok: %s", exc)
+        return "Произошла ошибка при обращении к Grok. Попробуй еще раз позже."
 
 
 def build_menu_keyboard() -> InlineKeyboardMarkup:
@@ -549,6 +620,8 @@ def select_random_fortunes(images: List[Path]) -> List[Path]:
 async def send_fortune_menu(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
+    stop_collecting_second_half(context.user_data)
+
     images = load_fortune_images()
     selected_fortunes = select_random_fortunes(images)
     user_id = update.effective_user.id
@@ -574,6 +647,7 @@ async def send_main_menu(
     update: Update, context: ContextTypes.DEFAULT_TYPE, *, show_disclaimer: bool = False
 ) -> None:
     user_data = context.user_data
+    stop_collecting_second_half(user_data)
     should_add_disclaimer = show_disclaimer and not user_data.get("disclaimer_shown")
 
     caption_parts = [
@@ -612,6 +686,8 @@ async def send_main_menu(
 
 
 async def send_ball_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    stop_collecting_second_half(context.user_data)
+
     caption = "Загадай про себя свой вопрос, и шар даст волшебный ответ ✨🔮"
     message = update.effective_message
     ball_image_path = Path("assets/ball.png")
@@ -630,6 +706,8 @@ async def send_ball_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def send_tarot_intro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    stop_collecting_second_half(context.user_data)
+
     caption = "Открой двери в мир таро и получи своё предсказание ✨"
     message = update.effective_message
 
@@ -647,6 +725,8 @@ async def send_tarot_intro(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def send_tarot_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    stop_collecting_second_half(context.user_data)
+
     caption = "Выбери карту и получи свое предсказание."
     message = update.effective_message
 
@@ -664,9 +744,19 @@ async def send_tarot_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def send_tarot_second_half(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_data = context.user_data
+    user_data["collecting_second_half"] = True
+
+    saved_questions = len(user_data.get("second_half_questions", []))
     caption = (
-        "Загадай имя человека, на которого будет расклад, и нажми кнопку ниже ✨"
+        "Загадай имя человека, введи свои вопросы одним или несколькими сообщениями"
+        " и нажми кнопку ниже ✨\n\n"
+        "Мы используем уже сохранённые вопросы"
     )
+    if saved_questions:
+        caption += f" (сейчас их {saved_questions})."
+    else:
+        caption += ", либо подставим стандартные."
     message = update.effective_message
 
     if TAROT_CARD_BACK_IMAGE_PATH.exists():
@@ -680,6 +770,34 @@ async def send_tarot_second_half(update: Update, context: ContextTypes.DEFAULT_T
             text=caption,
             reply_markup=build_tarot_second_half_keyboard(),
         )
+
+
+async def handle_second_half_question_input(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message = update.effective_message
+    if not message or not message.text:
+        return
+
+    user_data = context.user_data
+    if not user_data.get("collecting_second_half"):
+        return
+
+    questions = user_data.setdefault("second_half_questions", [])
+    max_questions = len(SECOND_HALF_QUESTIONS)
+
+    if len(questions) >= max_questions:
+        await message.reply_text(
+            "Уже сохранено максимум вопросов. Нажми «Сделать расклад»,"
+            " чтобы получить ответы."
+        )
+        return
+
+    questions.append(message.text.strip())
+    await message.reply_text(
+        f"Вопрос №{len(questions)} сохранён. Можешь добавить ещё или нажми"
+        " «Сделать расклад»."
+    )
 
 
 def compose_second_half_spread(cards: List[Path]) -> str:
@@ -711,23 +829,16 @@ async def send_tarot_second_half_result(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     query = update.callback_query
+    questions = get_user_second_half_questions(context.user_data)
+    answer_text = await ask_grok_about_second_half(questions)
 
-    try:
-        cards = load_tarot_cards()
-    except RuntimeError as exc:
-        LOGGER.error("Tarot cards error: %s", exc)
-        await query.answer("Карты недоступны. Попробуй позже.", show_alert=True)
-        return
+    spread_text = (
+        "Расклад на вторую половину года ✨\n\n"
+        f"{answer_text}\n\n"
+        "Отправь новые вопросы, чтобы обновить расклад, и нажми «Сделать"
+        " расклад» ещё раз."
+    )
 
-    required_cards = len(SECOND_HALF_QUESTIONS) * 2
-    if len(cards) < required_cards:
-        await query.answer(
-            "Для расклада нужно минимум 20 карт. Попробуй позже.",
-            show_alert=True,
-        )
-        return
-
-    spread_text = compose_second_half_spread(cards)
     await query.message.reply_text(
         text=spread_text,
         reply_markup=build_tarot_second_half_result_keyboard(),
@@ -869,6 +980,9 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_tarot_action, pattern="^tarot_"))
     application.add_handler(
         CallbackQueryHandler(handle_fortune_selection, pattern="^fortune_")
+    )
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_second_half_question_input)
     )
 
     LOGGER.info("Bot started. Waiting for updates...")
