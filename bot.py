@@ -188,7 +188,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 def start_health_server():
-    port = int(os.environ.get("PORT", "10000"))  # Render подставит свой PORT
+    port = int(os.environ.get("HEALTHCHECK_PORT", os.environ.get("PORT", "10000")))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     LOGGER.info("Healthcheck server started on port %s", port)
     server.serve_forever()
@@ -969,6 +969,10 @@ def main():
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not set.")
 
+    webhook_url = os.environ.get("TELEGRAM_WEBHOOK_URL")
+    webhook_path = os.environ.get("TELEGRAM_WEBHOOK_PATH", "")
+    webhook_port = int(os.environ.get("PORT", "10000"))
+
     application = ApplicationBuilder().token(token).build()
 
     application.add_handler(CommandHandler("start", start))
@@ -985,12 +989,29 @@ def main():
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_second_half_question_input)
     )
 
-    LOGGER.info("Bot started. Waiting for updates...")
-    application.run_polling()
+    if webhook_url:
+        full_webhook_url = webhook_url.rstrip("/")
+        if webhook_path:
+            full_webhook_url = f"{full_webhook_url}/{webhook_path.lstrip('/')}"
+
+        LOGGER.info("Bot started in webhook mode at %s", full_webhook_url)
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=webhook_port,
+            webhook_url=full_webhook_url,
+            url_path=webhook_path,
+            drop_pending_updates=True,
+        )
+    else:
+        LOGGER.info("Bot started. Waiting for updates via polling…")
+        application.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
-    # Сначала поднимаем HTTP-сервер для Render/UptimeRobot
-    Thread(target=start_health_server, daemon=True).start()
-    # Потом запускаем бота
+    webhook_url = os.environ.get("TELEGRAM_WEBHOOK_URL")
+
+    # Healthcheck нужен только в режиме polling. Webhook уже слушает HTTP-порт.
+    if not webhook_url:
+        Thread(target=start_health_server, daemon=True).start()
+
     main()
