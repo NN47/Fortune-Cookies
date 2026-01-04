@@ -462,11 +462,11 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [
         [
             InlineKeyboardButton(
-                "🥠 Печенье с предсказаниями", callback_data="menu_fortune"
+                "🃏 Карты Таро", callback_data="menu_tarot"
             )
         ],
+        [InlineKeyboardButton("🥠 Печенье с предсказанием", callback_data="menu_fortune")],
         [InlineKeyboardButton("🎱 Шар предсказаний", callback_data="menu_ball")],
-        [InlineKeyboardButton("🃏 Таро", callback_data="menu_tarot")],
     ]
     return InlineKeyboardMarkup(keyboard_layout)
 
