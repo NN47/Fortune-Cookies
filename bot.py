@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ParseMode
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
@@ -198,6 +199,7 @@ FORTUNE_MENU_IMAGE_PATH = Path(os.environ.get("FORTUNE_MENU_IMAGE", "assets/menu
 MAIN_MENU_IMAGE_PATH = Path(os.environ.get("MAIN_MENU_IMAGE", "assets/main.png"))
 FORTUNE_BALL_DIR = Path(os.environ.get("FORTUNE_BALL_DIR", "fortune ball"))
 FORTUNES_PER_SESSION = 8
+DISCLAIMER_TEXT = "<i>Интерпретации носят символический и развлекательный характер.</i>"
 TAROT_DIR = Path(os.environ.get("TAROT_DIR", "tarot"))
 TAROT_TITLE_IMAGE_PATH = Path(
     os.environ.get("TAROT_TITLE_IMAGE", "assets/Title Card.png")
@@ -569,9 +571,29 @@ async def send_fortune_menu(
 
 
 async def send_main_menu(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, show_disclaimer: bool = False
 ) -> None:
-    caption = "Добро пожаловать к волшебному духу магических предсказаний ✨🔮"
+    user_data = context.user_data
+    should_add_disclaimer = show_disclaimer and not user_data.get("disclaimer_shown")
+
+    caption_parts = [
+        "✨ Добро пожаловать ✨",
+        "",
+        "Здесь ты можешь выбрать один из трёх способов",
+        "получить знак или предсказание:",
+        "",
+        "🃏 Карты Таро",
+        "🥠 Печенье с предсказанием",
+        "🎱 Шар предсказаний",
+        "",
+        "Выбирай то, что откликается сейчас.",
+    ]
+
+    if should_add_disclaimer:
+        caption_parts.extend(["", DISCLAIMER_TEXT])
+        user_data["disclaimer_shown"] = True
+
+    caption = "\n".join(caption_parts)
     message = update.effective_message
 
     if MAIN_MENU_IMAGE_PATH.exists():
@@ -579,11 +601,13 @@ async def send_main_menu(
             photo=MAIN_MENU_IMAGE_PATH.read_bytes(),
             caption=caption,
             reply_markup=build_main_menu_keyboard(),
+            parse_mode=ParseMode.HTML,
         )
     else:
         await message.reply_text(
             text=caption,
             reply_markup=build_main_menu_keyboard(),
+            parse_mode=ParseMode.HTML,
         )
 
 
@@ -711,7 +735,7 @@ async def send_tarot_second_half_result(
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await send_main_menu(update, context)
+    await send_main_menu(update, context, show_disclaimer=True)
 
 
 async def refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
