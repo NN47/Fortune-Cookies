@@ -12,7 +12,7 @@ from itertools import combinations
 from pathlib import Path
 from typing import Dict, List
 
-from tarot_data import get_tarot_short_prediction
+from tarot_data import build_feelings_answer
 
 TAROT_DIR = Path("tarot")
 OUTPUT_FILE = TAROT_DIR / "feelings_combinations.json"
@@ -26,20 +26,6 @@ def load_tarot_cards() -> List[Path]:
         if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES
     ]
     return sorted(cards, key=lambda p: p.stem)
-
-
-def build_feelings_answer(first: str, second: str) -> str:
-    first_short = get_tarot_short_prediction(first)
-    second_short = get_tarot_short_prediction(second)
-
-    return (
-        f"{first} + {second}: в чувствах к вам соединяются энергии обоих арканов. "
-        f"{first_short} Это окрашивает эмоции в тональность {first}. "
-        f"Вторая карта дополняет картину: {second_short} "
-        "Вместе это даёт ощущение, что к вам человек испытывает смесь этих состояний — "
-        "они одновременно притягивают, тревожат или вдохновляют, и именно так "
-        "проявляются его эмоции."
-    )
 
 
 def generate_combinations(cards: List[Path]) -> List[Dict[str, object]]:
