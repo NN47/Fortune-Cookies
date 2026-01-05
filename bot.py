@@ -26,6 +26,13 @@ from telegram.ext import (
     filters,
 )
 
+from tarot_data import (
+    build_feelings_answer,
+    get_tarot_prediction,
+    get_tarot_ru_name,
+    get_tarot_short_prediction,
+)
+
 load_dotenv()
 
 # -------------------------------------------------
@@ -447,31 +454,6 @@ def stop_collecting_second_half(user_data: Dict) -> None:
     user_data.pop("collecting_second_half", None)
 
 
-def get_tarot_prediction(card_name: str) -> str:
-    base_name = Path(card_name).stem
-    return TAROT_PREDICTIONS.get(
-        base_name,
-        "Карта шепчет о переменах. Прислушайся к знакам и действуй уверенно.",
-    )
-
-
-def get_tarot_short_prediction(card_name: str) -> str:
-    """
-    Возвращает короткое описание карты (первая фраза полного значения).
-
-    Так ответ остаётся текстовым и не превращается в длинное полотно из
-    подробных трактовок на каждую из 20 карт во втором раскладе.
-    """
-
-    full_prediction = get_tarot_prediction(card_name)
-    first_sentence = full_prediction.split(". ")[0].strip()
-
-    if not first_sentence.endswith("."):
-        first_sentence += "."
-
-    return first_sentence
-
-
 def load_tarot_feelings_map() -> Dict[frozenset[str], str]:
     if not TAROT_FEELINGS_FILE.exists():
         raise RuntimeError(
@@ -499,19 +481,6 @@ def load_tarot_feelings_map() -> Dict[frozenset[str], str]:
 
     return mapping
 
-
-def build_feelings_answer(first_name: str, second_name: str) -> str:
-    first_short = get_tarot_short_prediction(first_name)
-    second_short = get_tarot_short_prediction(second_name)
-
-    return (
-        f"{first_name} + {second_name}: в чувствах к вам соединяются энергии обоих"
-        f" арканов. {first_short} Это окрашивает эмоции в тональность {first_name}."
-        f" Вторая карта дополняет картину: {second_short} Вместе это даёт ощущение,"
-        " что к вам человек испытывает смесь этих состояний — они одновременно"
-        " притягивают, тревожат или вдохновляют, и именно так проявляются его"
-        " эмоции."
-    )
 
 
 def get_tarot_feelings_answer(first_name: str, second_name: str) -> str:
@@ -859,8 +828,9 @@ async def send_tarot_feelings(update: Update, context: ContextTypes.DEFAULT_TYPE
     stop_collecting_second_half(context.user_data)
 
     caption = (
-        "Вытяни две карты и узнай, что чувствует загаданный человек к тебе."
-        " Расклад опирается на заранее подготовленные комбинации всех карт."
+        "🃏 Колода уже перетасована — тяни две карты и узнай, что чувствует"
+        " загаданный человек к тебе. Нажми кнопку ниже, чтобы увидеть, какие"
+        " арканы откроются. ✨🔮"
     )
     message = update.effective_message
 
@@ -968,20 +938,25 @@ async def send_tarot_feelings_result(
 
     first_card, second_card = random.sample(cards, 2)
     first_name, second_name = first_card.stem, second_card.stem
+    first_ru_name, second_ru_name = (
+        get_tarot_ru_name(first_name),
+        get_tarot_ru_name(second_name),
+    )
     answer_text = get_tarot_feelings_answer(first_name, second_name)
+    first_display = f"{first_name} — {first_ru_name}"
+    second_display = f"{second_name} — {second_ru_name}"
 
     await query.message.reply_media_group(
         [
-            InputMediaPhoto(media=first_card.read_bytes(), caption=first_name),
-            InputMediaPhoto(media=second_card.read_bytes(), caption=second_name),
+            InputMediaPhoto(media=first_card.read_bytes(), caption=first_display),
+            InputMediaPhoto(media=second_card.read_bytes(), caption=second_display),
         ]
     )
 
     caption = (
-        "Что он/она чувствует к вам?\n\n"
+        "Что он/она чувствует к вам? 💞\n\n"
         f"{answer_text}\n\n"
-        f"🃏 Карты: {first_name} + {second_name}\n"
-        f"{DISCLAIMER_TEXT}"
+        f"🃏 Карты: {first_display} + {second_display}\n"
     )
 
     await query.message.reply_text(

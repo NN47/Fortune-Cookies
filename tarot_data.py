@@ -1,6 +1,9 @@
 from pathlib import Path
 from typing import Dict
 
+SUPPORTED_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
 TAROT_PREDICTIONS: Dict[str, str] = {
     "0. The Fool": (
         "0. The Fool — Шут (Дурак). Год проб и ошибок с новыми возможностями: "
@@ -128,8 +131,15 @@ TAROT_PREDICTIONS: Dict[str, str] = {
 }
 
 
+def _normalize_card_name(card_name: str) -> str:
+    card_path = Path(card_name)
+    if card_path.suffix.lower() in SUPPORTED_SUFFIXES:
+        return card_path.stem
+    return card_name
+
+
 def get_tarot_prediction(card_name: str) -> str:
-    base_name = Path(card_name).stem
+    base_name = _normalize_card_name(card_name)
     return TAROT_PREDICTIONS.get(
         base_name,
         "Карта шепчет о переменах. Прислушайся к знакам и действуй уверенно.",
@@ -140,9 +150,45 @@ def get_tarot_short_prediction(card_name: str) -> str:
     """Короткое описание карты (первая фраза полного значения)."""
 
     full_prediction = get_tarot_prediction(card_name)
-    first_sentence = full_prediction.split(". ")[0].strip()
+    parts = full_prediction.split(". ")
+    first_sentence = ". ".join(parts[:2]).strip() if len(parts) >= 2 else parts[0].strip()
 
     if not first_sentence.endswith("."):
         first_sentence += "."
 
     return first_sentence
+
+
+def get_tarot_ru_name(card_name: str) -> str:
+    """Извлекает русское название аркана из текста предсказаний."""
+
+    base_name = _normalize_card_name(card_name)
+    prediction = TAROT_PREDICTIONS.get(base_name)
+    if not prediction:
+        return base_name
+
+    dash_index = prediction.find("—")
+    if dash_index == -1:
+        return base_name
+
+    after_dash = prediction[dash_index + 1 :]
+    return after_dash.split(".", 1)[0].strip()
+
+
+def build_feelings_answer(first_name: str, second_name: str) -> str:
+    first_short = get_tarot_short_prediction(first_name)
+    second_short = get_tarot_short_prediction(second_name)
+    first_ru = get_tarot_ru_name(first_name)
+    second_ru = get_tarot_ru_name(second_name)
+
+    return (
+        f"{first_name} — {first_ru} + {second_name} — {second_ru}: "
+        "🃏💖 В чувствах сплетаются две силы. "
+        f"Первый аркан задаёт ритм: {first_short} "
+        "Это фон эмоций и то, как сердце откликается на ваше присутствие. "
+        f"Следом раскрывается {second_ru}: {second_short} "
+        "Он добавляет свой оттенок — то, что волнует, окрыляет или манит. "
+        "Вместе арканы создают многослойное чувство: от тихого трепета до "
+        "смелого желания действовать, и именно так сейчас проявляются его "
+        "эмоции к вам. 🔮✨"
+    )
