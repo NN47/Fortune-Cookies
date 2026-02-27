@@ -23,8 +23,8 @@ from telegram.ext import (
 )
 
 from tarot_data import (
+    get_person_spread_answer,
     get_tarot_prediction,
-    get_tarot_short_prediction,
 )
 
 load_dotenv()
@@ -435,16 +435,6 @@ def clear_tarot_person_spread(user_data: Dict) -> None:
     user_data.pop("tarot_person_step", None)
 
 
-def build_person_spread_answer(question: str, card_name: str) -> str:
-    short_prediction = get_tarot_short_prediction(card_name)
-    return (
-        f"{question}\n\n"
-        f"Ответ по карте: {short_prediction}\n"
-        "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-        " вашей ситуации."
-    )
-
-
 def build_menu_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         InlineKeyboardButton(str(i), callback_data=f"fortune_{i}")
@@ -740,7 +730,7 @@ async def send_tarot_person_step(
 
     question = PERSON_SPREAD_QUESTIONS[step]
     card_path = Path(card_paths[step])
-    answer_text = build_person_spread_answer(question, card_path.name)
+    answer_text = get_person_spread_answer(step, question, card_path.name)
     is_last_question = step == len(PERSON_SPREAD_QUESTIONS) - 1
 
     caption = (
