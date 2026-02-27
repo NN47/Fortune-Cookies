@@ -1,10 +1,9 @@
 import logging
 import os
 import random
+import json
 from pathlib import Path
 from typing import Dict, List
-import json
-import aiohttp
 
 from dotenv import load_dotenv
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -13,7 +12,6 @@ from threading import Thread
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    InputMediaPhoto,
     Update,
 )
 from telegram.constants import ParseMode
@@ -22,14 +20,10 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
-    MessageHandler,
-    filters,
 )
 
 from tarot_data import (
-    build_feelings_answer,
     get_tarot_prediction,
-    get_tarot_ru_name,
     get_tarot_short_prediction,
 )
 
@@ -225,12 +219,6 @@ TAROT_SPLASH_IMAGE_PATH = Path(
 TAROT_CARD_BACK_IMAGE_PATH = Path(
     os.environ.get("TAROT_CARD_BACK_IMAGE", "assets/Card Back.png")
 )
-TAROT_FEELINGS_FILE = Path(
-    os.environ.get("TAROT_FEELINGS_FILE", TAROT_DIR / "feelings_combinations.json")
-)
-GROK_MODEL = os.environ.get("GROK_MODEL", "grok-beta")
-GROK_API_URL = os.environ.get("GROK_API_URL", "https://api.x.ai/v1/chat/completions")
-GROK_TIMEOUT_SECONDS = int(os.environ.get("GROK_TIMEOUT_SECONDS", "30"))
 
 # In-memory storage that keeps track of which fortune image corresponds to which button
 user_sessions: Dict[int, List[Path]] = {}
@@ -428,122 +416,33 @@ TAROT_PREDICTIONS: Dict[str, str] = {
     ),
 }
 
-SECOND_HALF_QUESTIONS: List[str] = [
-    "Какой он этот человек по отношению к тебе?",
-    "Какие мысли у этого человека по отношению к тебе?",
-    "Скучает ли этот человек по тебе?",
-    "Что на душе у этого человека по отношению к тебе?",
-    "Что хотел бы сказать?",
-    "Какие чувства?",
-    "Хотел бы встречи?",
-    "О чем жалеет этот человек по отношению к тебе?",
-    "Каким видит тебя?",
-    "Какие видит перспективы этот человек по отношению к тебе?",
+PERSON_SPREAD_QUESTIONS: List[str] = [
+    "Какой он, загаданный человек, по отношению к тебе?",
+    "Какие мысли о тебе у загаданного человека?",
+    "Скучает ли по тебе?",
+    "Что у загаданного человека на душе по отношению к тебе?",
+    "Что хотел бы тебе сказать загаданный человек?",
+    "Какие чувства у загаданного человека?",
+    "Хотел бы встречи с тобой загаданный человек?",
+    "О чем жалеет загаданный человек по отношению к тебе?",
+    "Какой/каким загаданный человек видит тебя?",
+    "Какие перспективы видит загаданный человек с тобой?",
 ]
 
 
-def get_user_second_half_questions(user_data: Dict) -> List[str]:
-    saved = [q.strip() for q in user_data.get("second_half_questions", []) if q.strip()]
-    if saved:
-        return saved
-
-    return SECOND_HALF_QUESTIONS
+def clear_tarot_person_spread(user_data: Dict) -> None:
+    user_data.pop("tarot_person_cards", None)
+    user_data.pop("tarot_person_step", None)
 
 
-def stop_collecting_second_half(user_data: Dict) -> None:
-    user_data.pop("collecting_second_half", None)
-
-
-def load_tarot_feelings_map() -> Dict[frozenset[str], str]:
-    if not TAROT_FEELINGS_FILE.exists():
-        raise RuntimeError(
-            "Файл с ответами о чувствах не найден. Сгенерируй feelings_combinations.json"
-            " или укажи TAROT_FEELINGS_FILE."
-        )
-
-    try:
-        entries = json.loads(TAROT_FEELINGS_FILE.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:  # noqa: B904
-        raise RuntimeError(
-            f"Не удалось прочитать {TAROT_FEELINGS_FILE}: {exc}"
-        ) from exc
-
-    mapping: Dict[frozenset[str], str] = {}
-    for entry in entries:
-        cards = entry.get("cards")
-        answer = entry.get("answer")
-        if not isinstance(cards, list) or len(cards) != 2 or not isinstance(answer, str):
-            continue
-        mapping[frozenset(cards)] = answer
-
-    if not mapping:
-        raise RuntimeError("В файле чувств нет корректных записей.")
-
-    return mapping
-
-
-
-def get_tarot_feelings_answer(first_name: str, second_name: str) -> str:
-    try:
-        mapping = load_tarot_feelings_map()
-    except RuntimeError:
-        return build_feelings_answer(first_name, second_name)
-
-    key = frozenset({first_name, second_name})
-    return mapping.get(key) or build_feelings_answer(first_name, second_name)
-
-
-async def ask_grok_about_second_half(questions: List[str]) -> str:
-    api_key = os.environ.get("GROK_API_KEY")
-    if not api_key:
-        return (
-            "GROK_API_KEY не настроен. Добавь ключ окружения, чтобы получать ответы"
-            " от Grok."
-        )
-
-    formatted_questions = "\n".join(
-        f"{idx + 1}. {question}" for idx, question in enumerate(questions)
+def build_person_spread_answer(question: str, card_name: str) -> str:
+    short_prediction = get_tarot_short_prediction(card_name)
+    return (
+        f"{question}\n\n"
+        f"Ответ по карте: {short_prediction}\n"
+        "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
+        " вашей ситуации."
     )
-    prompt = (
-        "Ответь на вопросы пользователя лаконично."
-        " Каждый пункт начинай с номера, повторяй вопрос и давай ответ в 1-2"
-        " предложения без лишних преамбул.\n\n"
-        f"Вопросы:\n{formatted_questions}"
-    )
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": GROK_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-
-    try:
-        timeout = aiohttp.ClientTimeout(total=GROK_TIMEOUT_SECONDS)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                GROK_API_URL, headers=headers, json=payload
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    LOGGER.error(
-                        "Grok API returned %s: %s", response.status, error_text
-                    )
-                    return "Не удалось получить ответ от Grok. Попробуй позже."
-
-                data = await response.json()
-                choices = data.get("choices", [])
-                if not choices:
-                    LOGGER.error("Grok API returned no choices: %s", data)
-                    return "Grok вернул пустой ответ. Попробуй еще раз."
-
-                content = choices[0]["message"].get("content", "").strip()
-                return content or "Grok не смог сформулировать ответ."
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.exception("Failed to contact Grok: %s", exc)
-        return "Произошла ошибка при обращении к Grok. Попробуй еще раз позже."
 
 
 def build_menu_keyboard() -> InlineKeyboardMarkup:
@@ -582,12 +481,7 @@ def build_ball_menu_keyboard() -> InlineKeyboardMarkup:
 def build_tarot_intro_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [
         [InlineKeyboardButton("Получить предсказание на год", callback_data="tarot_pick")],
-        [InlineKeyboardButton("Расклад на вторую половину", callback_data="tarot_second_half")],
-        [
-            InlineKeyboardButton(
-                "Что он/она чувствует к вам", callback_data="tarot_feelings"
-            )
-        ],
+        [InlineKeyboardButton("Расклад на человека", callback_data="tarot_person")],
         [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
     ]
     return InlineKeyboardMarkup(keyboard_layout)
@@ -604,21 +498,35 @@ def build_tarot_pick_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard_layout)
 
 
-def build_tarot_second_half_keyboard() -> InlineKeyboardMarkup:
+def build_tarot_person_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [
-        [InlineKeyboardButton("Сделать расклад", callback_data="tarot_second_half_run")],
-        [InlineKeyboardButton("Назад", callback_data="tarot_intro")],
-        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
+        [InlineKeyboardButton("Начать расклад", callback_data="tarot_person_start")],
+        [
+            InlineKeyboardButton("Назад", callback_data="tarot_intro"),
+            InlineKeyboardButton("Главное меню", callback_data="menu_main"),
+        ],
     ]
     return InlineKeyboardMarkup(keyboard_layout)
 
 
-def build_tarot_second_half_result_keyboard() -> InlineKeyboardMarkup:
-    keyboard_layout = [
-        [InlineKeyboardButton("Сделать расклад", callback_data="tarot_second_half_run")],
-        [InlineKeyboardButton("Назад", callback_data="tarot_intro")],
-        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
-    ]
+def build_tarot_person_step_keyboard(is_last_question: bool) -> InlineKeyboardMarkup:
+    keyboard_layout = []
+
+    if is_last_question:
+        keyboard_layout.append(
+            [InlineKeyboardButton("Начать сначала", callback_data="tarot_person_start")]
+        )
+    else:
+        keyboard_layout.append(
+            [InlineKeyboardButton("Следующий вопрос", callback_data="tarot_person_next")]
+        )
+
+    keyboard_layout.append(
+        [
+            InlineKeyboardButton("Назад", callback_data="tarot_intro"),
+            InlineKeyboardButton("Главное меню", callback_data="menu_main"),
+        ]
+    )
     return InlineKeyboardMarkup(keyboard_layout)
 
 
@@ -626,24 +534,6 @@ def build_tarot_result_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [
         [InlineKeyboardButton("Назад", callback_data="tarot_back")],
         [InlineKeyboardButton("Выбрать другую", callback_data="tarot_pick")],
-        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
-    ]
-    return InlineKeyboardMarkup(keyboard_layout)
-
-
-def build_tarot_feelings_keyboard() -> InlineKeyboardMarkup:
-    keyboard_layout = [
-        [InlineKeyboardButton("Вытянуть 2 карты", callback_data="tarot_feelings_run")],
-        [InlineKeyboardButton("Назад", callback_data="tarot_intro")],
-        [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
-    ]
-    return InlineKeyboardMarkup(keyboard_layout)
-
-
-def build_tarot_feelings_result_keyboard() -> InlineKeyboardMarkup:
-    keyboard_layout = [
-        [InlineKeyboardButton("Ещё один расклад", callback_data="tarot_feelings_run")],
-        [InlineKeyboardButton("Назад", callback_data="tarot_intro")],
         [InlineKeyboardButton("Главное меню", callback_data="menu_main")],
     ]
     return InlineKeyboardMarkup(keyboard_layout)
@@ -672,7 +562,7 @@ def select_random_fortunes(images: List[Path]) -> List[Path]:
 async def send_fortune_menu(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    stop_collecting_second_half(context.user_data)
+    clear_tarot_person_spread(context.user_data)
 
     images = load_fortune_images()
     selected_fortunes = select_random_fortunes(images)
@@ -699,7 +589,7 @@ async def send_main_menu(
     update: Update, context: ContextTypes.DEFAULT_TYPE, *, show_disclaimer: bool = False
 ) -> None:
     user_data = context.user_data
-    stop_collecting_second_half(user_data)
+    clear_tarot_person_spread(user_data)
     should_add_disclaimer = show_disclaimer and not user_data.get("disclaimer_shown")
 
     caption_parts = [
@@ -738,7 +628,7 @@ async def send_main_menu(
 
 
 async def send_ball_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    stop_collecting_second_half(context.user_data)
+    clear_tarot_person_spread(context.user_data)
 
     caption = "Загадай про себя свой вопрос, и шар даст волшебный ответ ✨🔮"
     message = update.effective_message
@@ -758,7 +648,7 @@ async def send_ball_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def send_tarot_intro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    stop_collecting_second_half(context.user_data)
+    clear_tarot_person_spread(context.user_data)
 
     caption = "Открой двери в мир таро и получи своё предсказание ✨"
     message = update.effective_message
@@ -777,7 +667,7 @@ async def send_tarot_intro(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def send_tarot_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    stop_collecting_second_half(context.user_data)
+    clear_tarot_person_spread(context.user_data)
 
     caption = "Выбери карту и получи свое предсказание."
     message = update.effective_message
@@ -795,42 +685,12 @@ async def send_tarot_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
 
-async def send_tarot_second_half(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    user_data["collecting_second_half"] = True
-
-    saved_questions = len(user_data.get("second_half_questions", []))
-    caption = (
-        "Загадай имя человека, введи свои вопросы одним или несколькими сообщениями"
-        " и нажми кнопку ниже ✨\n\n"
-        "Мы используем уже сохранённые вопросы"
-    )
-    if saved_questions:
-        caption += f" (сейчас их {saved_questions})."
-    else:
-        caption += ", либо подставим стандартные."
-    message = update.effective_message
-
-    if TAROT_CARD_BACK_IMAGE_PATH.exists():
-        await message.reply_photo(
-            photo=TAROT_CARD_BACK_IMAGE_PATH.read_bytes(),
-            caption=caption,
-            reply_markup=build_tarot_second_half_keyboard(),
-        )
-    else:
-        await message.reply_text(
-            text=caption,
-            reply_markup=build_tarot_second_half_keyboard(),
-        )
-
-
-async def send_tarot_feelings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    stop_collecting_second_half(context.user_data)
+async def send_tarot_person(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    clear_tarot_person_spread(context.user_data)
 
     caption = (
-        "🃏 Колода уже перетасована — тяни две карты и узнай, что чувствует"
-        " загаданный человек к тебе. Нажми кнопку ниже, чтобы увидеть, какие"
-        " арканы откроются. ✨🔮"
+        "Загадай про себя человека, представь его, назови про себя его имя и "
+        "начинай расклад."
     )
     message = update.effective_message
 
@@ -838,92 +698,20 @@ async def send_tarot_feelings(update: Update, context: ContextTypes.DEFAULT_TYPE
         await message.reply_photo(
             photo=TAROT_CARD_BACK_IMAGE_PATH.read_bytes(),
             caption=caption,
-            reply_markup=build_tarot_feelings_keyboard(),
+            reply_markup=build_tarot_person_keyboard(),
         )
     else:
         await message.reply_text(
             text=caption,
-            reply_markup=build_tarot_feelings_keyboard(),
+            reply_markup=build_tarot_person_keyboard(),
         )
 
 
-async def handle_second_half_question_input(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+async def send_tarot_person_step(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, restart: bool
 ) -> None:
-    message = update.effective_message
-    if not message or not message.text:
-        return
-
+    query = update.callback_query
     user_data = context.user_data
-    if not user_data.get("collecting_second_half"):
-        return
-
-    questions = user_data.setdefault("second_half_questions", [])
-    max_questions = len(SECOND_HALF_QUESTIONS)
-
-    if len(questions) >= max_questions:
-        await message.reply_text(
-            "Уже сохранено максимум вопросов. Нажми «Сделать расклад»,"
-            " чтобы получить ответы."
-        )
-        return
-
-    questions.append(message.text.strip())
-    await message.reply_text(
-        f"Вопрос №{len(questions)} сохранён. Можешь добавить ещё или нажми"
-        " «Сделать расклад»."
-    )
-
-
-def compose_second_half_spread(cards: List[Path]) -> str:
-    required_cards = len(SECOND_HALF_QUESTIONS) * 2
-    selected_cards = random.sample(cards, required_cards)
-
-    lines = []
-    for idx, question in enumerate(SECOND_HALF_QUESTIONS):
-        card_pair = selected_cards[idx * 2 : idx * 2 + 2]
-        card_names = " + ".join(card.stem for card in card_pair)
-        short_predictions = " / ".join(
-            get_tarot_short_prediction(card.name) for card in card_pair
-        )
-        lines.append(
-            f"{idx + 1}. {question}\n"
-            f"🃏 Карты: {card_names}\n"
-            f"💬 Значение: {short_predictions}"
-        )
-
-    spread_text = "Расклад на вторую половину года:\n\n" + "\n\n".join(lines)
-    spread_text += (
-        "\n\n✨ Ответы рождаются из сочетания выбранных арканов."
-        " Смотри на пары в контексте вопроса."
-    )
-    return spread_text
-
-
-async def send_tarot_second_half_result(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    query = update.callback_query
-    questions = get_user_second_half_questions(context.user_data)
-    answer_text = await ask_grok_about_second_half(questions)
-
-    spread_text = (
-        "Расклад на вторую половину года ✨\n\n"
-        f"{answer_text}\n\n"
-        "Отправь новые вопросы, чтобы обновить расклад, и нажми «Сделать"
-        " расклад» ещё раз."
-    )
-
-    await query.message.reply_text(
-        text=spread_text,
-        reply_markup=build_tarot_second_half_result_keyboard(),
-    )
-
-
-async def send_tarot_feelings_result(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    query = update.callback_query
 
     try:
         cards = load_tarot_cards()
@@ -932,36 +720,39 @@ async def send_tarot_feelings_result(
         await query.answer("Карты недоступны. Попробуй позже.", show_alert=True)
         return
 
-    if len(cards) < 2:
+    if len(cards) < len(PERSON_SPREAD_QUESTIONS):
         await query.answer("Недостаточно карт для расклада.", show_alert=True)
         return
 
-    first_card, second_card = random.sample(cards, 2)
-    first_name, second_name = first_card.stem, second_card.stem
-    first_ru_name, second_ru_name = (
-        get_tarot_ru_name(first_name),
-        get_tarot_ru_name(second_name),
-    )
-    answer_text = get_tarot_feelings_answer(first_name, second_name)
-    first_display = f"{first_name} — {first_ru_name}"
-    second_display = f"{second_name} — {second_ru_name}"
+    if restart or "tarot_person_cards" not in user_data:
+        selected_cards = random.sample(cards, len(PERSON_SPREAD_QUESTIONS))
+        user_data["tarot_person_cards"] = [str(card) for card in selected_cards]
+        user_data["tarot_person_step"] = 0
+    else:
+        user_data["tarot_person_step"] = user_data.get("tarot_person_step", 0) + 1
 
-    await query.message.reply_media_group(
-        [
-            InputMediaPhoto(media=first_card.read_bytes(), caption=first_display),
-            InputMediaPhoto(media=second_card.read_bytes(), caption=second_display),
-        ]
-    )
+    step = user_data.get("tarot_person_step", 0)
+    card_paths = user_data.get("tarot_person_cards", [])
+
+    if step >= len(PERSON_SPREAD_QUESTIONS) or step >= len(card_paths):
+        await query.answer("Расклад завершён. Нажми «Начать сначала».", show_alert=True)
+        return
+
+    question = PERSON_SPREAD_QUESTIONS[step]
+    card_path = Path(card_paths[step])
+    answer_text = build_person_spread_answer(question, card_path.name)
+    is_last_question = step == len(PERSON_SPREAD_QUESTIONS) - 1
 
     caption = (
-        "Что он/она чувствует к вам? 💞\n\n"
-        f"{answer_text}\n\n"
-        f"🃏 Карты: {first_display} + {second_display}\n"
+        f"Вопрос {step + 1}/{len(PERSON_SPREAD_QUESTIONS)}\n"
+        f"🃏 Карта: {card_path.stem}\n\n"
+        f"{answer_text}"
     )
 
-    await query.message.reply_text(
-        text=caption,
-        reply_markup=build_tarot_feelings_result_keyboard(),
+    await query.message.reply_photo(
+        photo=card_path.read_bytes(),
+        caption=caption,
+        reply_markup=build_tarot_person_step_keyboard(is_last_question),
     )
 
 
@@ -1035,20 +826,16 @@ async def handle_tarot_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         await send_tarot_intro(update, context)
         return
 
-    if query.data == "tarot_second_half":
-        await send_tarot_second_half(update, context)
+    if query.data == "tarot_person":
+        await send_tarot_person(update, context)
         return
 
-    if query.data == "tarot_second_half_run":
-        await send_tarot_second_half_result(update, context)
+    if query.data == "tarot_person_start":
+        await send_tarot_person_step(update, context, restart=True)
         return
 
-    if query.data == "tarot_feelings":
-        await send_tarot_feelings(update, context)
-        return
-
-    if query.data == "tarot_feelings_run":
-        await send_tarot_feelings_result(update, context)
+    if query.data == "tarot_person_next":
+        await send_tarot_person_step(update, context, restart=False)
         return
 
     if not query.data.startswith("tarot_draw_"):
@@ -1112,9 +899,6 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_tarot_action, pattern="^tarot_"))
     application.add_handler(
         CallbackQueryHandler(handle_fortune_selection, pattern="^fortune_")
-    )
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_second_half_question_input)
     )
 
     if webhook_url:
