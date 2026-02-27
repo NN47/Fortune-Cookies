@@ -443,6 +443,16 @@ def get_person_spread_answer(question_index: int, question: str, card_name: str)
                 " вашей ситуации."
             )
 
+    if question_index == 8:
+        card_answer = PERSON_EIGHTH_QUESTION_ANSWERS.get(base_name)
+        if card_answer:
+            return (
+                f"{question}\n\n"
+                f"Ответ по карте: {card_answer}\n"
+                "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
+                " вашей ситуации."
+            )
+
     short_prediction = get_tarot_short_prediction(base_name)
     return (
         f"{question}\n\n"
