@@ -368,9 +368,7 @@ def get_person_spread_answer(question_index: int, question: str, card_name: str)
         if card_answer:
             return (
                 f"{question}\n\n"
-                f"Ответ по карте: {card_answer}\n"
-                "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-                " вашей ситуации."
+                f"Ответ по карте: {card_answer}"
             )
 
     if question_index == 1:
@@ -378,9 +376,7 @@ def get_person_spread_answer(question_index: int, question: str, card_name: str)
         if card_answer:
             return (
                 f"{question}\n\n"
-                f"Ответ по карте: {card_answer}\n"
-                "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-                " вашей ситуации."
+                f"Ответ по карте: {card_answer}"
             )
 
     if question_index == 2:
@@ -388,9 +384,7 @@ def get_person_spread_answer(question_index: int, question: str, card_name: str)
         if card_answer:
             return (
                 f"{question}\n\n"
-                f"Ответ по карте: {card_answer}\n"
-                "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-                " вашей ситуации."
+                f"Ответ по карте: {card_answer}"
             )
 
     if question_index == 3:
@@ -398,9 +392,7 @@ def get_person_spread_answer(question_index: int, question: str, card_name: str)
         if card_answer:
             return (
                 f"{question}\n\n"
-                f"Ответ по карте: {card_answer}\n"
-                "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-                " вашей ситуации."
+                f"Ответ по карте: {card_answer}"
             )
 
     if question_index == 4:
@@ -408,9 +400,7 @@ def get_person_spread_answer(question_index: int, question: str, card_name: str)
         if card_answer:
             return (
                 f"{question}\n\n"
-                f"Ответ по карте: {card_answer}\n"
-                "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-                " вашей ситуации."
+                f"Ответ по карте: {card_answer}"
             )
 
     if question_index == 5:
@@ -418,9 +408,7 @@ def get_person_spread_answer(question_index: int, question: str, card_name: str)
         if card_answer:
             return (
                 f"{question}\n\n"
-                f"Ответ по карте: {card_answer}\n"
-                "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-                " вашей ситуации."
+                f"Ответ по карте: {card_answer}"
             )
 
     if question_index == 6:
@@ -428,9 +416,7 @@ def get_person_spread_answer(question_index: int, question: str, card_name: str)
         if card_answer:
             return (
                 f"{question}\n\n"
-                f"Ответ по карте: {card_answer}\n"
-                "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-                " вашей ситуации."
+                f"Ответ по карте: {card_answer}"
             )
 
     if question_index == 7:
@@ -438,17 +424,13 @@ def get_person_spread_answer(question_index: int, question: str, card_name: str)
         if card_answer:
             return (
                 f"{question}\n\n"
-                f"Ответ по карте: {card_answer}\n"
-                "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-                " вашей ситуации."
+                f"Ответ по карте: {card_answer}"
             )
 
     short_prediction = get_tarot_short_prediction(base_name)
     return (
         f"{question}\n\n"
-        f"Ответ по карте: {short_prediction}\n"
-        "Прислушайся к ощущениям от этого аркана — они подскажут детали именно"
-        " вашей ситуации."
+        f"Ответ по карте: {short_prediction}"
     )
 
 
