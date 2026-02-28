@@ -513,7 +513,7 @@ def build_tarot_person_step_keyboard(is_last_question: bool) -> InlineKeyboardMa
 
     keyboard_layout.append(
         [
-            InlineKeyboardButton("Назад", callback_data="tarot_intro"),
+            InlineKeyboardButton("Назад", callback_data="tarot_person_back"),
             InlineKeyboardButton("Главное меню", callback_data="menu_main"),
         ]
     )
@@ -698,7 +698,7 @@ async def send_tarot_person(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def send_tarot_person_step(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, *, restart: bool
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, action: str
 ) -> None:
     query = update.callback_query
     user_data = context.user_data
@@ -714,15 +714,24 @@ async def send_tarot_person_step(
         await query.answer("Недостаточно карт для расклада.", show_alert=True)
         return
 
-    if restart or "tarot_person_cards" not in user_data:
+    if action == "restart" or "tarot_person_cards" not in user_data:
         selected_cards = random.sample(cards, len(PERSON_SPREAD_QUESTIONS))
         user_data["tarot_person_cards"] = [str(card) for card in selected_cards]
         user_data["tarot_person_step"] = 0
-    else:
+    elif action == "next":
         user_data["tarot_person_step"] = user_data.get("tarot_person_step", 0) + 1
+    elif action == "back":
+        user_data["tarot_person_step"] = user_data.get("tarot_person_step", 0) - 1
+    else:
+        await query.answer("Неизвестная команда расклада.", show_alert=True)
+        return
 
     step = user_data.get("tarot_person_step", 0)
     card_paths = user_data.get("tarot_person_cards", [])
+
+    if step < 0:
+        await send_tarot_person(update, context)
+        return
 
     if step >= len(PERSON_SPREAD_QUESTIONS) or step >= len(card_paths):
         await query.answer("Расклад завершён. Нажми «Начать сначала».", show_alert=True)
@@ -821,11 +830,15 @@ async def handle_tarot_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     if query.data == "tarot_person_start":
-        await send_tarot_person_step(update, context, restart=True)
+        await send_tarot_person_step(update, context, action="restart")
         return
 
     if query.data == "tarot_person_next":
-        await send_tarot_person_step(update, context, restart=False)
+        await send_tarot_person_step(update, context, action="next")
+        return
+
+    if query.data == "tarot_person_back":
+        await send_tarot_person_step(update, context, action="back")
         return
 
     if not query.data.startswith("tarot_draw_"):
