@@ -13,6 +13,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Update,
+    WebAppInfo,
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -449,6 +450,14 @@ def build_menu_keyboard() -> InlineKeyboardMarkup:
 
 def build_main_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard_layout = [
+        [
+            InlineKeyboardButton(
+                "🔮 Открыть Magical Spirit",
+                web_app=WebAppInfo(
+                    url="https://fortune-cookie-bot-to2u.onrender.com"
+                ),
+            )
+        ],
         [
             InlineKeyboardButton(
                 "🃏 Карты Таро", callback_data="menu_tarot"
