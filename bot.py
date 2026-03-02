@@ -85,6 +85,44 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Not Found")
                 return
 
+        if self.path.startswith("/assets/"):
+            local_path = self.path.lstrip("/")
+            if os.path.exists(local_path):
+                mime = "image/jpeg"
+                if local_path.endswith(".png"):
+                    mime = "image/png"
+                elif local_path.endswith(".webp"):
+                    mime = "image/webp"
+
+                with open(local_path, "rb") as f:
+                    data = f.read()
+
+                self._send_headers(200, mime)
+                self.wfile.write(data)
+                return
+
+            self._send_headers(404)
+            self.wfile.write(b"Not Found")
+            return
+
+        if self.path.startswith("/ball/"):
+            file_name = self.path.removeprefix("/ball/")
+            local_path = FORTUNE_BALL_DIR / file_name
+            if local_path.exists() and local_path.is_file():
+                mime = "image/jpeg"
+                if local_path.suffix.lower() == ".png":
+                    mime = "image/png"
+                elif local_path.suffix.lower() == ".webp":
+                    mime = "image/webp"
+
+                self._send_headers(200, mime)
+                self.wfile.write(local_path.read_bytes())
+                return
+
+            self._send_headers(404)
+            self.wfile.write(b"Not Found")
+            return
+
         # 3) MAIN PAGE — HTML with cookie preview
         # Берём 8 случайных картинок
         supported = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
@@ -93,13 +131,24 @@ class HealthHandler(BaseHTTPRequestHandler):
             if p.suffix.lower() in supported
         ]
         chosen = random.sample(all_images, min(8, len(all_images)))
+        supported_ball = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+        ball_images = []
+        if FORTUNE_BALL_DIR.exists():
+            ball_images = [
+                str(p) for p in FORTUNE_BALL_DIR.iterdir()
+                if p.suffix.lower() in supported_ball
+            ]
 
         # Превращаем в пути для браузера — "/images/filename.jpg"
         browser_paths = [
             "/images/" + Path(p).name for p in chosen
         ]
+        ball_browser_paths = [
+            "/ball/" + Path(p).name for p in ball_images
+        ]
 
         images_js = json.dumps(browser_paths, ensure_ascii=False)
+        ball_images_js = json.dumps(ball_browser_paths, ensure_ascii=False)
 
         # HTML + JS
         html = f"""
@@ -107,7 +156,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <title>Fortune Cookies</title>
+  <title>Magical Spirit</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body {{
@@ -124,16 +173,31 @@ class HealthHandler(BaseHTTPRequestHandler):
       background: rgba(255,255,255,0.05);
       border-radius: 20px;
       padding: 20px;
-      width: 420px;
+      width: min(460px, calc(100vw - 24px));
       backdrop-filter: blur(12px);
       box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     }}
-    h1 {{
-      text-align: center;
-      margin-bottom: 15px;
+    .hero-image {{
+      width: 100%;
+      border-radius: 14px;
+      margin-bottom: 14px;
     }}
+    .caption {{
+      white-space: pre-line;
+      text-align: center;
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }}
+    .menu-buttons,
     .grid {{
       display: grid;
+      gap: 10px;
+      margin-bottom: 20px;
+    }}
+    .menu-buttons {{
+      grid-template-columns: 1fr;
+    }}
+    .grid {{
       grid-template-columns: repeat(4,1fr);
       gap: 10px;
       margin-bottom: 20px;
@@ -146,9 +210,12 @@ class HealthHandler(BaseHTTPRequestHandler):
       font-size: 16px;
       cursor: pointer;
     }}
+    .hidden {{
+      display: none;
+    }}
     #result {{
       text-align: center;
-      min-height: 160px;
+      min-height: 80px;
     }}
     #result img {{
       max-width: 100%;
@@ -159,8 +226,25 @@ class HealthHandler(BaseHTTPRequestHandler):
 </head>
 <body>
   <div class="card">
-    <h1>🥠 Выбери печенье</h1>
-    <div class="grid">
+    <img class="hero-image" src="/assets/main.png" alt="Главное меню" />
+    <div class="caption">✨ Добро пожаловать ✨
+
+Здесь ты можешь выбрать один из трёх способов
+получить знак или предсказание:
+
+🃏 Карты Таро
+🥠 Печенье с предсказанием
+🎱 Шар предсказаний
+
+Выбирай то, что откликается сейчас.</div>
+
+    <div class="menu-buttons">
+      <button id="btn-tarot">🃏 Карты Таро</button>
+      <button id="btn-fortune">🥠 Печенье с предсказанием</button>
+      <button id="btn-ball">🎱 Шар предсказаний</button>
+    </div>
+
+    <div class="grid hidden" id="fortune-buttons">
       <button data-i="0">1</button>
       <button data-i="1">2</button>
       <button data-i="2">3</button>
@@ -171,17 +255,44 @@ class HealthHandler(BaseHTTPRequestHandler):
       <button data-i="7">8</button>
     </div>
 
-    <div id="result">Нажми на кнопку, чтобы увидеть предсказание</div>
+    <div id="result">Нажми на один из разделов выше</div>
   </div>
 
   <script>
     const images = {images_js};
+    const ballImages = {ball_images_js};
+    const result = document.getElementById("result");
+    const fortuneButtons = document.getElementById("fortune-buttons");
 
-    document.querySelectorAll("button").forEach(btn => {{
+    document.getElementById("btn-tarot").addEventListener("click", () => {{
+      fortuneButtons.classList.add("hidden");
+      result.innerHTML = "Открой бота и выбери расклад Таро, чтобы получить персональное предсказание ✨";
+    }});
+
+    document.getElementById("btn-fortune").addEventListener("click", () => {{
+      fortuneButtons.classList.remove("hidden");
+      result.innerHTML = "Выбери своё печенье с предсказанием!";
+    }});
+
+    document.getElementById("btn-ball").addEventListener("click", () => {{
+      fortuneButtons.classList.add("hidden");
+      if (!ballImages.length) {{
+        result.innerHTML = "Изображения шара пока недоступны.";
+        return;
+      }}
+
+      const randomImage = ballImages[Math.floor(Math.random() * ballImages.length)];
+      result.innerHTML = `
+        <p>Загадай про себя свой вопрос, и шар даст волшебный ответ ✨🔮</p>
+        <img src="${{randomImage}}" alt="magic ball" />
+      `;
+    }});
+
+    document.querySelectorAll("#fortune-buttons button").forEach(btn => {{
       btn.addEventListener("click", () => {{
         const i = btn.dataset.i;
         const url = images[i];
-        document.getElementById("result").innerHTML =
+        result.innerHTML =
           `<img src="${{url}}" alt="fortune" />`;
       }});
     }});
