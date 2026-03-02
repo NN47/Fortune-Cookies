@@ -182,6 +182,9 @@ class HealthHandler(BaseHTTPRequestHandler):
       border-radius: 14px;
       margin-bottom: 14px;
     }}
+    .screen.hidden {{
+      display: none;
+    }}
     .caption {{
       white-space: pre-line;
       text-align: center;
@@ -222,12 +225,28 @@ class HealthHandler(BaseHTTPRequestHandler):
       border-radius: 14px;
       box-shadow: 0 4px 18px rgba(0,0,0,0.5);
     }}
+    #ball-caption {{
+      text-align: center;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }}
+    #ball-preview {{
+      max-width: 100%;
+      border-radius: 14px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+      margin-bottom: 12px;
+    }}
+    .ball-actions {{
+      display: grid;
+      gap: 10px;
+    }}
   </style>
 </head>
 <body>
   <div class="card">
-    <img class="hero-image" src="/assets/main.png" alt="Главное меню" />
-    <div class="caption">✨ Добро пожаловать ✨
+    <div class="screen" id="main-screen">
+      <img class="hero-image" src="/assets/main.png" alt="Главное меню" />
+      <div class="caption">✨ Добро пожаловать ✨
 
 Здесь ты можешь выбрать один из трёх способов
 получить знак или предсказание:
@@ -238,33 +257,77 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 Выбирай то, что откликается сейчас.</div>
 
-    <div class="menu-buttons">
-      <button id="btn-tarot">🃏 Карты Таро</button>
-      <button id="btn-fortune">🥠 Печенье с предсказанием</button>
-      <button id="btn-ball">🎱 Шар предсказаний</button>
+      <div class="menu-buttons">
+        <button id="btn-tarot">🃏 Карты Таро</button>
+        <button id="btn-fortune">🥠 Печенье с предсказанием</button>
+        <button id="btn-ball">🎱 Шар предсказаний</button>
+      </div>
+
+      <div class="grid hidden" id="fortune-buttons">
+        <button data-i="0">1</button>
+        <button data-i="1">2</button>
+        <button data-i="2">3</button>
+        <button data-i="3">4</button>
+        <button data-i="4">5</button>
+        <button data-i="5">6</button>
+        <button data-i="6">7</button>
+        <button data-i="7">8</button>
+      </div>
+
+      <div id="result">Нажми на один из разделов выше</div>
     </div>
 
-    <div class="grid hidden" id="fortune-buttons">
-      <button data-i="0">1</button>
-      <button data-i="1">2</button>
-      <button data-i="2">3</button>
-      <button data-i="3">4</button>
-      <button data-i="4">5</button>
-      <button data-i="5">6</button>
-      <button data-i="6">7</button>
-      <button data-i="7">8</button>
+    <div class="screen hidden" id="ball-screen">
+      <p id="ball-caption">Загадай про себя свой вопрос, и шар даст волшебный ответ ✨🔮</p>
+      <img id="ball-preview" src="/assets/ball.png" alt="magic ball" />
+      <div class="ball-actions">
+        <button id="btn-ball-answer">Получить ответ</button>
+        <button id="btn-ball-again" class="hidden">Спросить еще</button>
+        <button id="btn-ball-home">Главное меню</button>
+      </div>
     </div>
-
-    <div id="result">Нажми на один из разделов выше</div>
   </div>
 
   <script>
     const images = {images_js};
     const ballImages = {ball_images_js};
+    const mainScreen = document.getElementById("main-screen");
+    const ballScreen = document.getElementById("ball-screen");
     const result = document.getElementById("result");
     const fortuneButtons = document.getElementById("fortune-buttons");
+    const ballCaption = document.getElementById("ball-caption");
+    const ballPreview = document.getElementById("ball-preview");
+    const ballAgainButton = document.getElementById("btn-ball-again");
+
+    const showMainScreen = () => {{
+      mainScreen.classList.remove("hidden");
+      ballScreen.classList.add("hidden");
+    }};
+
+    const showBallScreen = () => {{
+      mainScreen.classList.add("hidden");
+      ballScreen.classList.remove("hidden");
+      ballCaption.textContent = "Загадай про себя свой вопрос, и шар даст волшебный ответ ✨🔮";
+      ballPreview.src = "/assets/ball.png";
+      ballAgainButton.classList.add("hidden");
+    }};
+
+    const showBallAnswer = () => {{
+      if (!ballImages.length) {{
+        ballCaption.textContent = "Изображения шара пока недоступны.";
+        ballPreview.removeAttribute("src");
+        ballAgainButton.classList.add("hidden");
+        return;
+      }}
+
+      const randomImage = ballImages[Math.floor(Math.random() * ballImages.length)];
+      ballCaption.textContent = "Ответ шара ✨";
+      ballPreview.src = randomImage;
+      ballAgainButton.classList.remove("hidden");
+    }};
 
     document.getElementById("btn-tarot").addEventListener("click", () => {{
+      showMainScreen();
       fortuneButtons.classList.add("hidden");
       result.innerHTML = "Открой бота и выбери расклад Таро, чтобы получить персональное предсказание ✨";
     }});
@@ -275,18 +338,12 @@ class HealthHandler(BaseHTTPRequestHandler):
     }});
 
     document.getElementById("btn-ball").addEventListener("click", () => {{
-      fortuneButtons.classList.add("hidden");
-      if (!ballImages.length) {{
-        result.innerHTML = "Изображения шара пока недоступны.";
-        return;
-      }}
-
-      const randomImage = ballImages[Math.floor(Math.random() * ballImages.length)];
-      result.innerHTML = `
-        <p>Загадай про себя свой вопрос, и шар даст волшебный ответ ✨🔮</p>
-        <img src="${{randomImage}}" alt="magic ball" />
-      `;
+      showBallScreen();
     }});
+
+    document.getElementById("btn-ball-answer").addEventListener("click", showBallAnswer);
+    ballAgainButton.addEventListener("click", showBallAnswer);
+    document.getElementById("btn-ball-home").addEventListener("click", showMainScreen);
 
     document.querySelectorAll("#fortune-buttons button").forEach(btn => {{
       btn.addEventListener("click", () => {{
