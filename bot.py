@@ -185,6 +185,18 @@ class HealthHandler(BaseHTTPRequestHandler):
     .screen.hidden {{
       display: none;
     }}
+    .fortune-title {{
+      text-align: center;
+      margin-bottom: 14px;
+      line-height: 1.5;
+      white-space: pre-line;
+    }}
+    .fortune-menu-image {{
+      width: 100%;
+      border-radius: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+    }}
     .caption {{
       white-space: pre-line;
       text-align: center;
@@ -216,11 +228,11 @@ class HealthHandler(BaseHTTPRequestHandler):
     .hidden {{
       display: none;
     }}
-    #result {{
+    #fortune-result {{
       text-align: center;
       min-height: 80px;
     }}
-    #result img {{
+    #fortune-result img {{
       max-width: 100%;
       border-radius: 14px;
       box-shadow: 0 4px 18px rgba(0,0,0,0.5);
@@ -263,7 +275,13 @@ class HealthHandler(BaseHTTPRequestHandler):
         <button id="btn-ball">🎱 Шар предсказаний</button>
       </div>
 
-      <div class="grid hidden" id="fortune-buttons">
+      <div id="main-result">Нажми на один из разделов выше</div>
+    </div>
+
+    <div class="screen hidden" id="fortune-screen">
+      <p class="fortune-title">Выбери печенье с предсказанием 🥠</p>
+      <img class="fortune-menu-image" src="/assets/menu.jpg" alt="Печенье с предсказаниями" />
+      <div class="grid" id="fortune-buttons">
         <button data-i="0">1</button>
         <button data-i="1">2</button>
         <button data-i="2">3</button>
@@ -273,8 +291,8 @@ class HealthHandler(BaseHTTPRequestHandler):
         <button data-i="6">7</button>
         <button data-i="7">8</button>
       </div>
-
-      <div id="result">Нажми на один из разделов выше</div>
+      <div id="fortune-result">Нажми на номер печенья, чтобы открыть предсказание ✨</div>
+      <button id="btn-fortune-home">Главное меню</button>
     </div>
 
     <div class="screen hidden" id="ball-screen">
@@ -292,8 +310,10 @@ class HealthHandler(BaseHTTPRequestHandler):
     const images = {images_js};
     const ballImages = {ball_images_js};
     const mainScreen = document.getElementById("main-screen");
+    const fortuneScreen = document.getElementById("fortune-screen");
     const ballScreen = document.getElementById("ball-screen");
-    const result = document.getElementById("result");
+    const mainResult = document.getElementById("main-result");
+    const fortuneResult = document.getElementById("fortune-result");
     const fortuneButtons = document.getElementById("fortune-buttons");
     const ballCaption = document.getElementById("ball-caption");
     const ballPreview = document.getElementById("ball-preview");
@@ -301,11 +321,20 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     const showMainScreen = () => {{
       mainScreen.classList.remove("hidden");
+      fortuneScreen.classList.add("hidden");
       ballScreen.classList.add("hidden");
+    }};
+
+    const showFortuneScreen = () => {{
+      mainScreen.classList.add("hidden");
+      fortuneScreen.classList.remove("hidden");
+      ballScreen.classList.add("hidden");
+      fortuneResult.innerHTML = "Нажми на номер печенья, чтобы открыть предсказание ✨";
     }};
 
     const showBallScreen = () => {{
       mainScreen.classList.add("hidden");
+      fortuneScreen.classList.add("hidden");
       ballScreen.classList.remove("hidden");
       ballCaption.textContent = "Загадай про себя свой вопрос, и шар даст волшебный ответ ✨🔮";
       ballPreview.src = "/assets/ball.png";
@@ -328,13 +357,11 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     document.getElementById("btn-tarot").addEventListener("click", () => {{
       showMainScreen();
-      fortuneButtons.classList.add("hidden");
-      result.innerHTML = "Открой бота и выбери расклад Таро, чтобы получить персональное предсказание ✨";
+      mainResult.innerHTML = "Открой бота и выбери расклад Таро, чтобы получить персональное предсказание ✨";
     }});
 
     document.getElementById("btn-fortune").addEventListener("click", () => {{
-      fortuneButtons.classList.remove("hidden");
-      result.innerHTML = "Выбери своё печенье с предсказанием!";
+      showFortuneScreen();
     }});
 
     document.getElementById("btn-ball").addEventListener("click", () => {{
@@ -344,12 +371,13 @@ class HealthHandler(BaseHTTPRequestHandler):
     document.getElementById("btn-ball-answer").addEventListener("click", showBallAnswer);
     ballAgainButton.addEventListener("click", showBallAnswer);
     document.getElementById("btn-ball-home").addEventListener("click", showMainScreen);
+    document.getElementById("btn-fortune-home").addEventListener("click", showMainScreen);
 
     document.querySelectorAll("#fortune-buttons button").forEach(btn => {{
       btn.addEventListener("click", () => {{
         const i = btn.dataset.i;
         const url = images[i];
-        result.innerHTML =
+        fortuneResult.innerHTML =
           `<img src="${{url}}" alt="fortune" />`;
       }});
     }});
