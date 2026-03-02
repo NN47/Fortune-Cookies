@@ -4,6 +4,7 @@ import random
 import json
 from pathlib import Path
 from typing import Dict, List
+from urllib.parse import unquote
 
 from dotenv import load_dotenv
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -58,15 +59,17 @@ class HealthHandler(BaseHTTPRequestHandler):
         self._send_headers()
 
     def do_GET(self):
+        request_path = unquote(self.path)
+
         # 1) HEALTHCHECK endpoint
-        if self.path.startswith("/health"):
+        if request_path.startswith("/health"):
             self._send_headers()
             self.wfile.write(b"OK")
             return
 
         # 2) STATIC IMAGES: /images/... → отдаём файлы печенек
-        if self.path.startswith("/images/"):
-            local_path = self.path.lstrip("/")  # "images/xxx.jpg"
+        if request_path.startswith("/images/"):
+            local_path = request_path.lstrip("/")  # "images/xxx.jpg"
             if os.path.exists(local_path):
                 mime = "image/jpeg"
                 if local_path.endswith(".png"):
@@ -85,8 +88,8 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Not Found")
                 return
 
-        if self.path.startswith("/assets/"):
-            local_path = self.path.lstrip("/")
+        if request_path.startswith("/assets/"):
+            local_path = request_path.lstrip("/")
             if os.path.exists(local_path):
                 mime = "image/jpeg"
                 if local_path.endswith(".png"):
@@ -105,8 +108,8 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"Not Found")
             return
 
-        if self.path.startswith("/ball/"):
-            file_name = self.path.removeprefix("/ball/")
+        if request_path.startswith("/ball/"):
+            file_name = request_path.removeprefix("/ball/")
             local_path = FORTUNE_BALL_DIR / file_name
             if local_path.exists() and local_path.is_file():
                 mime = "image/jpeg"
@@ -121,6 +124,178 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             self._send_headers(404)
             self.wfile.write(b"Not Found")
+            return
+
+        if request_path.startswith("/tarot/"):
+            file_name = request_path.removeprefix("/tarot/")
+            local_path = TAROT_DIR / file_name
+            if local_path.exists() and local_path.is_file():
+                mime = "image/jpeg"
+                if local_path.suffix.lower() == ".png":
+                    mime = "image/png"
+                elif local_path.suffix.lower() == ".webp":
+                    mime = "image/webp"
+
+                self._send_headers(200, mime)
+                self.wfile.write(local_path.read_bytes())
+                return
+
+            self._send_headers(404)
+            self.wfile.write(b"Not Found")
+            return
+
+        if request_path == "/tarot":
+            supported_tarot = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+            tarot_cards = [
+                path for path in TAROT_DIR.iterdir()
+                if path.is_file() and path.suffix.lower() in supported_tarot
+            ]
+
+            tarot_payload = []
+            for card_path in tarot_cards:
+                person_answers = [
+                    get_person_spread_answer(index, question, card_path.name)
+                    for index, question in enumerate(PERSON_SPREAD_QUESTIONS)
+                ]
+                tarot_payload.append(
+                    {
+                        "name": card_path.stem,
+                        "path": f"/tarot/{card_path.name}",
+                        "prediction": get_tarot_prediction(card_path.name),
+                        "person_answers": person_answers,
+                    }
+                )
+
+            tarot_cards_js = json.dumps(tarot_payload, ensure_ascii=False)
+            person_questions_js = json.dumps(PERSON_SPREAD_QUESTIONS, ensure_ascii=False)
+
+            html = f"""
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tarot</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {{ margin: 0; background: #0d0d18; color: #eee; font-family: system-ui; }}
+    .wrap {{ max-width: 480px; margin: 0 auto; padding: 16px; }}
+    .card {{ background: rgba(255,255,255,0.06); border-radius: 18px; padding: 16px; }}
+    .title {{ text-align: center; margin: 0 0 12px; white-space: pre-line; }}
+    .cover {{ width: 100%; border-radius: 12px; margin-bottom: 12px; }}
+    .actions {{ display: grid; gap: 8px; margin-bottom: 12px; }}
+    button {{ background: #f8d57a; border: none; border-radius: 10px; padding: 11px; font-size: 15px; cursor: pointer; }}
+    .hidden {{ display: none; }}
+    .grid {{ display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 12px; }}
+    .result img {{ width: 100%; border-radius: 12px; margin-bottom: 8px; }}
+    .result {{ white-space: pre-line; line-height: 1.4; }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div id="intro-screen">
+        <h3 class="title">Открой двери в мир таро и получи своё предсказание ✨</h3>
+        <img class="cover" src="/assets/Title Card.png" alt="Tarot" />
+        <div class="actions">
+          <button id="year-mode">Получить предсказание на год</button>
+          <button id="person-mode">Расклад на человека</button>
+          <button onclick="location.href='/'">Главное меню</button>
+        </div>
+      </div>
+
+      <div id="year-screen" class="hidden">
+        <h3 class="title">Выбери карту и получи свое предсказание.</h3>
+        <img class="cover" src="/assets/Splash Screen.png" alt="Pick" />
+        <div class="grid" id="year-buttons"></div>
+        <div class="result" id="year-result"></div>
+        <div class="actions">
+          <button id="year-back">Назад</button>
+        </div>
+      </div>
+
+      <div id="person-screen" class="hidden">
+        <h3 class="title">Загадай человека и начни расклад.</h3>
+        <img class="cover" src="/assets/Card Back.png" alt="Person spread" />
+        <div class="result" id="person-result">Нажми «Начать расклад», чтобы получить первый ответ.</div>
+        <div class="actions">
+          <button id="person-start">Начать расклад</button>
+          <button id="person-prev" class="hidden">Назад</button>
+          <button id="person-next" class="hidden">Следующий вопрос</button>
+          <button id="person-home">К выбору раскладов</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tarotCards = {tarot_cards_js};
+    const personQuestions = {person_questions_js};
+    const introScreen = document.getElementById('intro-screen');
+    const yearScreen = document.getElementById('year-screen');
+    const personScreen = document.getElementById('person-screen');
+    const yearButtons = document.getElementById('year-buttons');
+    const yearResult = document.getElementById('year-result');
+    const personResult = document.getElementById('person-result');
+    const personPrev = document.getElementById('person-prev');
+    const personNext = document.getElementById('person-next');
+    let personCards = [];
+    let personStep = 0;
+
+    const setScreen = (name) => {{
+      introScreen.classList.toggle('hidden', name !== 'intro');
+      yearScreen.classList.toggle('hidden', name !== 'year');
+      personScreen.classList.toggle('hidden', name !== 'person');
+    }};
+
+    const pickRandomCard = () => tarotCards[Math.floor(Math.random() * tarotCards.length)];
+
+    for (let i = 0; i < 8; i += 1) {{
+      const button = document.createElement('button');
+      button.textContent = String(i + 1);
+      button.addEventListener('click', () => {{
+        const card = pickRandomCard();
+        yearResult.innerHTML = `<img src="${{card.path}}" alt="${{card.name}}" /><strong>${{card.name}}</strong>\n\n${{card.prediction}}`;
+      }});
+      yearButtons.appendChild(button);
+    }}
+
+    const renderPersonStep = () => {{
+      const card = personCards[personStep];
+      personResult.innerHTML = `<img src="${{card.path}}" alt="${{card.name}}" /><strong>Вопрос ${{personStep + 1}}/${{personQuestions.length}}</strong>\n🃏 Карта: ${{card.name}}\n\n${{card.person_answers[personStep]}}`;
+      personPrev.classList.toggle('hidden', personStep === 0);
+      personNext.textContent = personStep === personQuestions.length - 1 ? 'Начать сначала' : 'Следующий вопрос';
+      personNext.classList.remove('hidden');
+    }};
+
+    document.getElementById('year-mode').addEventListener('click', () => setScreen('year'));
+    document.getElementById('person-mode').addEventListener('click', () => setScreen('person'));
+    document.getElementById('year-back').addEventListener('click', () => setScreen('intro'));
+    document.getElementById('person-home').addEventListener('click', () => setScreen('intro'));
+    document.getElementById('person-start').addEventListener('click', () => {{
+      personCards = [...tarotCards].sort(() => Math.random() - 0.5).slice(0, personQuestions.length);
+      personStep = 0;
+      renderPersonStep();
+    }});
+    personPrev.addEventListener('click', () => {{
+      if (personStep > 0) {{
+        personStep -= 1;
+        renderPersonStep();
+      }}
+    }});
+    personNext.addEventListener('click', () => {{
+      if (personStep >= personQuestions.length - 1) {{
+        personStep = 0;
+      }} else {{
+        personStep += 1;
+      }}
+      renderPersonStep();
+    }});
+  </script>
+</body>
+</html>
+"""
+            self._send_headers()
+            self.wfile.write(html.encode("utf-8"))
             return
 
         # 3) MAIN PAGE — HTML with cookie preview
@@ -356,8 +531,7 @@ class HealthHandler(BaseHTTPRequestHandler):
     }};
 
     document.getElementById("btn-tarot").addEventListener("click", () => {{
-      showMainScreen();
-      mainResult.innerHTML = "Открой бота и выбери расклад Таро, чтобы получить персональное предсказание ✨";
+      window.location.href = "/tarot";
     }});
 
     document.getElementById("btn-fortune").addEventListener("click", () => {{
