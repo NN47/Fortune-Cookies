@@ -221,7 +221,7 @@ class HealthHandler(BaseHTTPRequestHandler):
           <button id="person-start">Начать расклад</button>
           <button id="person-prev" class="hidden">Назад</button>
           <button id="person-next" class="hidden">Следующий вопрос</button>
-          <button id="person-home">К выбору раскладов</button>
+          <button id="person-home">Главное меню</button>
         </div>
       </div>
     </div>
@@ -236,6 +236,7 @@ class HealthHandler(BaseHTTPRequestHandler):
     const yearButtons = document.getElementById('year-buttons');
     const yearResult = document.getElementById('year-result');
     const personResult = document.getElementById('person-result');
+    const personStart = document.getElementById('person-start');
     const personPrev = document.getElementById('person-prev');
     const personNext = document.getElementById('person-next');
     let personCards = [];
@@ -262,16 +263,32 @@ class HealthHandler(BaseHTTPRequestHandler):
     const renderPersonStep = () => {{
       const card = personCards[personStep];
       personResult.innerHTML = `<img src="${{card.path}}" alt="${{card.name}}" /><strong>Вопрос ${{personStep + 1}}/${{personQuestions.length}}</strong>\n🃏 Карта: ${{card.name}}\n\n${{card.person_answers[personStep]}}`;
+      personStart.classList.add('hidden');
       personPrev.classList.toggle('hidden', personStep === 0);
       personNext.textContent = personStep === personQuestions.length - 1 ? 'Начать сначала' : 'Следующий вопрос';
       personNext.classList.remove('hidden');
     }};
 
+    const resetPersonSpread = () => {{
+      personCards = [];
+      personStep = 0;
+      personResult.textContent = 'Нажми «Начать расклад», чтобы получить первый ответ.';
+      personStart.classList.remove('hidden');
+      personPrev.classList.add('hidden');
+      personNext.classList.add('hidden');
+    }};
+
     document.getElementById('year-mode').addEventListener('click', () => setScreen('year'));
-    document.getElementById('person-mode').addEventListener('click', () => setScreen('person'));
+    document.getElementById('person-mode').addEventListener('click', () => {{
+      resetPersonSpread();
+      setScreen('person');
+    }});
     document.getElementById('year-back').addEventListener('click', () => setScreen('intro'));
-    document.getElementById('person-home').addEventListener('click', () => setScreen('intro'));
-    document.getElementById('person-start').addEventListener('click', () => {{
+    document.getElementById('person-home').addEventListener('click', () => {{
+      resetPersonSpread();
+      setScreen('intro');
+    }});
+    personStart.addEventListener('click', () => {{
       personCards = [...tarotCards].sort(() => Math.random() - 0.5).slice(0, personQuestions.length);
       personStep = 0;
       renderPersonStep();
